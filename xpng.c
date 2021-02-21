@@ -427,7 +427,7 @@ static _Bool ___encode(u64_t T, const u64_t mode, const pm_t *pm, const char *co
     ret (_Bool)fclose(of);
 }
 
-static _Bool encode(const u64_t mode, const pm_t *pm, const char *const filename) {
+_Bool png_from_pixmap(const u64_t mode, const pm_t *pm, const char *const filename) {
     
     ret ___encode(T_MAX, mode, pm, filename);
 }
@@ -608,30 +608,51 @@ static _Bool decode(const reg_t *r, pm_t *pm) {
     ret ___decode(T_MAX, r, pm);
 }
 
+_Bool png_from_jpg(const char *const jpg, const char *const png) {
+    
+    puts("Not Implemented.");
+    
+    ret 1;
+}
+
 MAIN_ARGS {
     
     if (argc != 4 || argv[1][0] != '-' || strlen(argv[1]) != 2) goto h;
-    pm_t pm; reg_t r; F_RD(argv[2], &r) ret 1;    
+    pm_t pm; reg_t r; u64_t ns; TIME_PAIR;  
     
-    if ('0' <= argv[1][1] && argv[1][1] <= '2') {
+    switch (argv[1][1]) {
     
-        if (sscanf((char *)(r.p + 3), "%lu %lu", &pm.w, &pm.h) != 2) ret 1;
-        pm.s = 3 * pm.w * pm.h, pm.p = r.p + (r.s - pm.s);
-        if (encode(argv[1][1] - '0', &pm, argv[3])) ret 1;
-
-    } else if (argv[1][1] == 'd') {
+        case '0': puts("Not Implemented."); ret 1;
+        case '1':
+        case '2':
+        case '7':
+            
+            F_RD(argv[2], &r) ret 1;
+            if (sscanf((char *)(r.p + 3), "%lu %lu", &pm.w, &pm.h) != 2) ret 1;
+            pm.s = 3 * pm.w * pm.h, pm.p = r.p + (r.s - pm.s);
+            if (png_from_pixmap(argv[1][1] == '7' ? 0 : argv[1][1] - '0', &pm, argv[3])) ret 1;
+            break;
         
-        u64_t ns; TIME_PAIR; TIME_DIFF_EXEC(if (decode(&r, &pm)) ret 1, NS, ns);
-        PF("decode, %3d thread%c: %5lu MPx/s\n",
-           (int)T_MAX, T_MAX > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm.s / 3e6)));
-        char P6[100]; int l = sprintf(P6, "P6\n%lu %lu\n255\n", pm.w, pm.h);
-        FILE *of = fopen(argv[3], "wb"); if (of EqN) ret 1;
-        if (fwrite(P6, 1, l, of) != l || fwrite(pm.p, 1, pm.s, of) != pm.s || fclose(of)) ret 1;
+        case '3': ret (int)png_from_jpg(argv[2], argv[3]);
+        case 'd':
+            
+            F_RD(argv[2], &r) ret 1;
+            TIME_DIFF_EXEC(if (decode(&r, &pm)) ret 1, NS, ns);
+            PF("decode, %3d thread%c: %5lu MPx/s\n",
+               (int)T_MAX, T_MAX > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm.s / 3e6)));
+            char P6[100]; int l = sprintf(P6, "P6\n%lu %lu\n255\n", pm.w, pm.h);
+            FILE *of = fopen(argv[3], "wb"); if (of EqN) ret 1;
+            if (fwrite(P6, 1, l, of) != l || fwrite(pm.p, 1, pm.s, of) != pm.s || fclose(of)) ret 1;
+            break;
+        
+        default: goto h;
+    }
     
-    } else goto h; ret 0; h: PF("\n"
+    ret 0; h: PF("\n"
 
-    "encode: ./xpng -2 example.ppm example.xpng\n"
-    "decode: ./xpng -d example.xpng example.ppm\n"
+    "encode: ./xpng -[0127] example.ppm  example.xpng\n"
+    "        ./xpng -3      example.jpg  example.xpng\n"
+    "decode: ./xpng -d      example.xpng example.ppm\n"
 
     "\n"); ret 1;
 }
