@@ -615,6 +615,11 @@ _Bool png_from_jpg(const char *const jpg, const char *const png) {
     ret 1;
 }
 
+#define PNG_COMPRESSION_TYPE_FAST 1
+#define PNG_COMPRESSION_TYPE_SLOW 2
+#define PNG_COMPRESSION_TYPE_EXJPEG 3
+#define PNG_COMPRESSION_TYPE_UNCOMPRESSED 7
+
 MAIN_ARGS {
     
     if (argc != 4 || argv[1][0] != '-' || strlen(argv[1]) != 2) goto h;
