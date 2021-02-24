@@ -88,7 +88,7 @@ static task_t* compute_props_of_each_tile(u64_t *N, const pm_t *pm) {
     MALLOC(r = t, sizeof(task_t) * (*N = Nw * Nh)) ret t;
     
     fin(Nh) {
-        fin_(j, Nw) {
+        fiN(j, Nw) {
             t->w = (j == 0) ? w0 : (j == 1 ? w1 : w);
             t->h = (i == 0) ? h0 : (i == 1 ? h1 : h);
             t->p = (u8_t *)p; p += t->w * 3;
@@ -125,15 +125,15 @@ static void predict_predictor(_Bool *Y, _Bool *G, const task_t *t, const s63_t b
                 pix4[i] = pix3[i] = 
                     p[i] - ((((3 * p[i - A] + 3 * p[i - bpr]) - 2 * p[(i - bpr) - A]) + 2) >> 2);
             pix2[0] -= pix2[1], pix2[2] -= pix2[1]; pix4[0] -= pix4[1], pix4[2] -= pix4[1];
-            fin_(j, 4) { s31_t *px = pix[j]; pix_toU_(px); }
+            fiN(j, 4) { s31_t *px = pix[j]; pix_toU_(px); }
             numB_(nl1, pix1); numB_(nl2, pix2); numB_(nl3, pix3); numB_(nl4, pix4);
             F1[nl1]++, F2[nl2]++, F3[nl3]++, F4[nl4]++;
         }
     }
     
     u32_t *Fa[] = { F1, F2, F3, F4 }; u64_t r[4] = {}, m = 0;
-    fin_(k, 4) FIN(1, 9, 1) r[k] += Fa[k][i] * i * 3;
-    FIN(1, 4, 1) if (r[i] < r[m]) m = i; *Y = m & 2, *G = m & 1;
+    fiN(k, 4) fix(1, 9, 1) r[k] += Fa[k][i] * i * 3;
+    fix(1, 4, 1) if (r[i] < r[m]) m = i; *Y = m & 2, *G = m & 1;
 }
 
 typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
@@ -162,13 +162,13 @@ static void encode_stream(u32_t *F, const u64_t N, const u64_t nBit, u8_t **st,
         *(--res) = st_size + (*(*st - 1) << 24),
        *_res = *st = (u8_t *)(--res), *res = 8 + (1 << 24); return;
     }
-    FIN(1, N + 1, 1) cum[i] = (cum[i] * PROB_SCALE) / st_size;
+    fix(1, N + 1, 1) cum[i] = (cum[i] * PROB_SCALE) / st_size;
     fin(N) {
         if (F[i] && cum[i + 1] == cum[i]) {
             u32_t m = ~0u, best_steal, f;
-            fin_(j, N) { f = cum[j + 1] - cum[j]; if (f > 1 && f < m) m = f, best_steal = j; }
-            if (best_steal < i) FIN_(j, best_steal + 1, i + 1, 1) cum[j]--;
-            else FIN_(j, i + 1, best_steal + 1, 1) cum[j]++;
+            fiN(j, N) { f = cum[j + 1] - cum[j]; if (f > 1 && f < m) m = f, best_steal = j; }
+            if (best_steal < i) fiX(j, best_steal + 1, i + 1, 1) cum[j]--;
+            else fiX(j, i + 1, best_steal + 1, 1) cum[j]++;
         }
     }
     fin(N) F[i] = cum[i + 1] - cum[i];
@@ -256,7 +256,7 @@ static PTHTF(enc_1_th) {
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
     u32_t F[9][256]; u8_t *f, *cx[9], *st[9], *xp[19]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
-    FIN(1, 19, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : (i < 18 ? 3 : 4));
+    fix(1, 19, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : (i < 18 ? 3 : 4));
 
 t:  GET_TASK
     
@@ -273,7 +273,7 @@ t:  GET_TASK
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
     
     fin(9) encode_stream(F[0] + i * 16, 9, 4, cx + i, cx[i] - xp[i], xp + 17, &b);
-    FIN(1, 9, 1) encode_stream(F[i], 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1),
+    fix(1, 9, 1) encode_stream(F[i], 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1),
                                st + i, st[i] - xp[i + 8], xp + 17, &b);
     
     if (b.l > 0) *(b._p)++ = b.bc << (32 - b.l);
@@ -287,7 +287,7 @@ t:  GET_TASK
     MALLOC(t->f = f, bsz + rsz + 4) goto e; u32_t m = (1 << 26) + (Y << 25) + (G << 24);
     *(u32_t *)f = (bsz + rsz + 4) + m; f += 4; memcpy(f, xp[18], bsz); f += bsz;
     fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & bitmask(24)); f += tsz; }
-    FIN(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & bitmask(24)); f += tsz; }
+    fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & bitmask(24)); f += tsz; }
     
     goto t; e: free(xp[0]); return NULL;
 }
@@ -352,7 +352,7 @@ static PTHTF(enc_2_th) {
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
     u8_t *f, *cx[9], *st[9], *xp[19]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
-    FIN(1, 19, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : (i < 18 ? 3 : 4));
+    fix(1, 19, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : (i < 18 ? 3 : 4));
 
 t:  GET_TASK
     
@@ -370,7 +370,7 @@ t:  GET_TASK
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
     
     fin(9) encode_stream(F[0] + i * 16, 9, 4, cx + i, cx[i] - xp[i], xp + 17, &b);
-    FIN(1, 9, 1) encode_stream(F[i], 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1),
+    fix(1, 9, 1) encode_stream(F[i], 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1),
                                st + i, st[i] - xp[i + 8], xp + 17, &b);
     
     if (b.l > 0) *(b._p)++ = b.bc << (32 - b.l);
@@ -384,7 +384,7 @@ t:  GET_TASK
     MALLOC(t->f = f, bsz + rsz + 4) goto e; u32_t m = (1 << 28) + (Y << 25) + (G << 24);
     *(u32_t *)f = (bsz + rsz + 4) + m; f += 4; memcpy(f, xp[18], bsz); f += bsz;
     fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & bitmask(24)); f += tsz; }
-    FIN(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & bitmask(24)); f += tsz; }
+    fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & bitmask(24)); f += tsz; }
     
     goto t; e: free(xp[0]); return NULL;
 }
@@ -498,7 +498,7 @@ static PTHTF(dec_1_th) {
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
     u8_t *cx[9], *st[9], *xp[17]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
-    FIN(1, 17, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : 3);
+    fix(1, 17, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : 3);
     
 t:  GET_TASK
     
@@ -511,7 +511,7 @@ t:  GET_TASK
     memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8);
     
     fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & bitmask(24); }
-    FIN(1, 9, 1) {
+    fix(1, 9, 1) {
         decode_stream(f, 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1), st[i], &b);
         f += *(u32_t *)f & bitmask(24);
     }
@@ -565,7 +565,7 @@ static PTHTF(dec_2_th) {
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
     u8_t *cx[9], *st[9], *xp[17]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
-    FIN(1, 17, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : 3);
+    fix(1, 17, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : 3);
     
 t:  GET_TASK
     
@@ -579,7 +579,7 @@ t:  GET_TASK
     memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8);
     
     fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & bitmask(24); }
-    FIN(1, 9, 1) {
+    fix(1, 9, 1) {
         decode_stream(f, 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1), st[i], &b);
         f += *(u32_t *)f & bitmask(24);
     }

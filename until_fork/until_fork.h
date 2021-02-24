@@ -1,5 +1,9 @@
+#ifndef _UNTIL_FORK_H
+#define _UNTIL_FORK_H
+
 #include <pthread.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -26,11 +30,11 @@ typedef int64_t s63_t; typedef uint64_t u64_t;
 #define ret return
 
 #define fin(stop) for (s63_t i = 0, S_T_O_P_ = (stop); i < S_T_O_P_; i++)
-#define FIN(start, stop, increment) \
+#define fix(start, stop, increment) \
     for (s63_t i = (start), S_T_O_P_ = (stop), I_N_C_ = (increment); i < S_T_O_P_; i += I_N_C_)
-#define fin_(iter_name, stop) \
+#define fiN(iter_name, stop) \
     for (s63_t iter_name = 0, S_T_O_P_ = (stop); iter_name < S_T_O_P_; iter_name++)
-#define FIN_(iter_name, start, stop, increment) \
+#define fiX(iter_name, start, stop, increment) \
     for (s63_t iter_name = (start), S_T_O_P_ = (stop), I_N_C_ = (increment); \
     iter_name < S_T_O_P_; iter_name += I_N_C_)
 
@@ -45,3 +49,5 @@ if (pthread_create(id_ptr, NULL, thread_func, data_ptr) != 0)
 #define PTHJ(id) if (pthread_join(id, NULL) != 0)
 
 _Bool spawn_and_wait(u64_t T, void *d_arr, u64_t d_elem_sz, void* (*f)(void *));
+
+#endif
