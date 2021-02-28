@@ -12,9 +12,7 @@ typedef struct  pm_t { u8_t *p; u64_t w, h, s; } pm_t;
 #define A (s63_t)3
 #define BC(C, B) b->bc = (b->bc << (C)) + (B), b->l += (C)
 #define BCF(C) ((b->bc >> (b->l -= (C))) & bitmask(C))
-#define PF printf
 #define EqN == NULL
-#define MALLOC(pointer, regsize) if ((pointer = malloc(regsize)) EqN)
 
 #define bitmask(n) ((1LU << (n)) - 1)
 #define numBit(v) ((1 + (__builtin_clz(v) ^ 31)) & (-(v) >> 31))
@@ -406,7 +404,7 @@ static _Bool ___encode(u64_t T, const u64_t mode, const pm_t *pm, const char *co
     if (spawn_and_wait(T, &d, 0, enc_th[mode])) ret 1;
     
     TIME_GET_STOP; u64_t ns = TIME_DIFF_NS;
-    PF("encode, %3d thread%c: %5lu MPx/s\n",
+    pf("encode, %3d thread%c: %5lu MPx/s\n",
        (int)T_MAX, T_MAX > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / 3e6)));
     
     u64_t x = 0;
@@ -643,7 +641,7 @@ MAIN_ARGS {
             
             F_RD(argv[2], &r) ret 1;
             TIME_DIFF_EXEC(if (decode(&r, &pm)) ret 1, NS, ns);
-            PF("decode, %3d thread%c: %5lu MPx/s\n",
+            pf("decode, %3d thread%c: %5lu MPx/s\n",
                (int)T_MAX, T_MAX > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm.s / 3e6)));
             char P6[100]; int l = sprintf(P6, "P6\n%lu %lu\n255\n", pm.w, pm.h);
             FILE *of = fopen(argv[3], "wb"); if (of EqN) ret 1;
@@ -653,7 +651,7 @@ MAIN_ARGS {
         default: goto h;
     }
     
-    ret 0; h: PF("\n"
+    ret 0; h: pf("\n"
 
     "encode: ./xpng -[0127] example.ppm  example.xpng\n"
     "        ./xpng -3      example.jpg  example.xpng\n"

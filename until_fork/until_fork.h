@@ -1,5 +1,5 @@
-#ifndef _UNTIL_FORK_H
-#define _UNTIL_FORK_H
+#ifndef ___UNTIL_FORK_H
+#define ___UNTIL_FORK_H
 
 #include <pthread.h>
 #include <stdint.h>
@@ -28,16 +28,25 @@ typedef int16_t s15_t; typedef uint16_t u16_t;
 typedef int32_t s31_t; typedef uint32_t u32_t;
 typedef int64_t s63_t; typedef uint64_t u64_t;
 
+
+#define MALLOC(pointer, reg_size) if ((pointer = malloc(reg_size))    == NULL)
+#define CALLOC(pointer, reg_size) if ((pointer = calloc(reg_size, 1)) == NULL)
+
+#define pf printf
 #define ret return
 
-#define fin(stop) for (s63_t i = 0, S_T_O_P_ = (stop); i < S_T_O_P_; i++)
+#define fin(stop) for (ssize_t i = -1, _stop = stop; ++i < _stop;)
+#define fiN(iter_name, stop) for (ssize_t iter_name = -1, _stop = stop; ++iter_name < _stop;)
 #define fix(start, stop, increment) \
-    for (s63_t i = (start), S_T_O_P_ = (stop), I_N_C_ = (increment); i < S_T_O_P_; i += I_N_C_)
-#define fiN(iter_name, stop) \
-    for (s63_t iter_name = 0, S_T_O_P_ = (stop); iter_name < S_T_O_P_; iter_name++)
+    for (ssize_t i = start, _stop = stop; i < _stop; i += increment)
 #define fiX(iter_name, start, stop, increment) \
-    for (s63_t iter_name = (start), S_T_O_P_ = (stop), I_N_C_ = (increment); \
-    iter_name < S_T_O_P_; iter_name += I_N_C_)
+    for (ssize_t iter_name = start, _stop = stop; iter_name < _stop; iter_name += increment)
+#define r_fin(stop) for (ssize_t i = stop; --i >= 0;)
+#define r_fiN(iter_name, stop) for (ssize_t iter_name = stop; --iter_name >= 0;)
+#define r_fix(start, stop, decrement) \
+    for (ssize_t i = stop, _start = start; (i -= decrement) >= _start;)
+#define r_fiX(iter_name, start, stop, decrement) \
+    for (ssize_t iter_name = stop, _start = start; (iter_name -= decrement) >= _start;)
 
 #define PTHSPI(pointer_to_spinlock) pthread_spin_init(pointer_to_spinlock, 0);
 #define PTHSPL(pointer_to_spinlock) pthread_spin_lock(pointer_to_spinlock);
@@ -49,6 +58,8 @@ typedef int64_t s63_t; typedef uint64_t u64_t;
     if (pthread_create(id_ptr, NULL, thread_func, data_ptr) != 0)
 #define PTHJ(id) if (pthread_join(id, NULL) != 0)
 
-_Bool spawn_and_wait(u64_t T, void *d_arr, u64_t d_elem_sz, void* (*f)(void *));
+_Bool spawn_and_wait(size_t T, void *d_arr, size_t d_elem_sz, void* (*f)(void *));
+
+void* rsort(size_t T, const char *Type, const char *Ord, void *A, size_t L, void *Ext_Buff);
 
 #endif

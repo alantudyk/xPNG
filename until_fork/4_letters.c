@@ -1,6 +1,6 @@
 #include "until_fork.h"
 
-_Bool spawn_and_wait(u64_t T, void *d_arr, u64_t d_elem_sz, void* (*f)(void *)) {
+_Bool spawn_and_wait(size_t T, void *d_arr, size_t d_elem_sz, void* (*f)(void *)) {
     
     _Bool R = 0; pthread_t th[T];
     
