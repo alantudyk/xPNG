@@ -98,7 +98,7 @@ static task_t* compute_props_of_each_tile(u64_t *N, const pm_t *pm) {
     ret r;
 }
 
-#define STEP 3
+#define STEP 4
 #if STEP < 2
 #error STEP < 2
 #endif
