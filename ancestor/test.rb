@@ -14,8 +14,7 @@ system('gcc -flto -O3 -s gray.c -o gray -D T_MAX=2 -lpthread') || raise
         system('./gray -d /tmp/res.gray /tmp/res.ppm > /dev/null') ||
             (puts 'g_d ' + f; raise)
         sum += (z = File.size '/tmp/res.gray')
-        t = `sha256sum -b /tmp/src.ppm /tmp/res.ppm`.split
-        (puts 'g_sha256sum ' + f; raise) if t[0] != t[2]
+        (puts 'g_cmp ' + f; raise) unless system 'cmp /tmp/src.ppm /tmp/res.ppm'
         # puts '%11d %s' % [z, f]
     end
     puts '%11d %s' % [sum, m]
