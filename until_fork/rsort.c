@@ -1,3 +1,6 @@
+// To-do:
+// Skipping unnecessary move-steps (when only one bucket used).
+
 #include "until_fork.h"
 
 static void* rsort_st(const size_t type, const _Bool asc,
