@@ -106,16 +106,16 @@ static task_t* compute_props_of_each_tile(u64_t *N, const pm_t *pm) {
 #define pix_toU_(from) \
     fin(3) { from[i] = (s7_t)from[i]; from[i] = (from[i] << 1) ^ (from[i] >> 31); }
 #define numB_(to, from) to = from[0] | from[1] | from[2]; to = numBit(to);
-static void predict_predictor(_Bool *Y, _Bool *G, const task_t *t, const s63_t bpr) {
+static void predict_predictor_rgb(_Bool *Y, _Bool *G, const task_t *t, const s63_t bpr) {
     
-    u32_t F1[9] = {}, F2[9] = {}, F3[9] = {}, F4[9] = {};
-    const s63_t BPR = bpr * STEP, w = (t->w - t->w % STEP) * A, W = BPR - w;
-    const u8_t *p = t->p + (BPR - bpr) + (STEP - 1) * A,
+    u32_t F1 = 0, F2 = 0, F3 = 0, F4 = 0;
+    const s63_t BPR = bpr * STEP, w = (t->w - t->w % STEP) * 3, W = BPR - w;
+    const u8_t *p = t->p + (BPR - bpr) + (STEP - 1) * 3,
                *const P = p + BPR * (t->h / STEP),
                *L = p + w;
     
     for (; p != P; L += BPR, p += W) {
-        for (; p != L; p += STEP * A) {
+        for (; p != L; p += STEP * 3) {
             s31_t pix1[3], pix2[3], pix3[3], pix4[3], nl1, nl2, nl3, nl4;
             s31_t *pix[] = { pix1, pix2, pix3, pix4 };
             fin(3)
@@ -125,13 +125,16 @@ static void predict_predictor(_Bool *Y, _Bool *G, const task_t *t, const s63_t b
             pix2[0] -= pix2[1], pix2[2] -= pix2[1]; pix4[0] -= pix4[1], pix4[2] -= pix4[1];
             fiN(j, 4) { s31_t *px = pix[j]; pix_toU_(px); }
             numB_(nl1, pix1); numB_(nl2, pix2); numB_(nl3, pix3); numB_(nl4, pix4);
-            F1[nl1]++, F2[nl2]++, F3[nl3]++, F4[nl4]++;
+            F1 += nl1, F2 += nl2, F3 += nl3, F4 += nl4;
         }
     }
     
-    u32_t *Fa[] = { F1, F2, F3, F4 }; u64_t r[4] = {}, m = 0;
-    fiN(k, 4) fix(1, 9, 1) r[k] += Fa[k][i] * i * 3;
-    fix(1, 4, 1) if (r[i] < r[m]) m = i; *Y = m & 2, *G = m & 1;
+    u64_t m = 0, r = F1;
+    if (F2 < r) m = 1, r = F2;
+    if (F3 < r) m = 2, r = F3;
+    if (F4 < r) m = 3, r = F4;
+    
+    *Y = m & 2, *G = m & 1;
 }
 
 typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
@@ -265,7 +268,7 @@ t:  GET_TASK
     fin(3) b.bc = (b.bc << 8) + t->p[i];
     const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += A;
-    _Bool Y = 0, G = 0; if (t->w >= STEP && t->h >= STEP) predict_predictor(&Y, &G, t, bpr);
+    _Bool Y = 0, G = 0; if (t->w >= STEP && t->h >= STEP) predict_predictor_rgb(&Y, &G, t, bpr);
     
     for (; p != L;) { ENC(p1x); } p += W;
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
@@ -362,7 +365,7 @@ t:  GET_TASK
     fin(3) b.bc = (b.bc << 8) + t->p[i];
     const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += A;
-    _Bool Y = 0, G = 0; if (t->w >= STEP && t->h >= STEP) predict_predictor(&Y, &G, t, bpr);
+    _Bool Y = 0, G = 0; if (t->w >= STEP && t->h >= STEP) predict_predictor_rgb(&Y, &G, t, bpr);
     
     for (; p != L;) { ENC(p1x); } p += W;
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
