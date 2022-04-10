@@ -1,7 +1,7 @@
 #ifndef ___XPNG_H
 #define ___XPNG_H
 
-#include <until_fork.h>
+#include "until_fork/until_fork.h"
 
 #define XPNG_COMPRESSION_TYPE_FAST 1
 #define XPNG_COMPRESSION_TYPE_SLOW 2
