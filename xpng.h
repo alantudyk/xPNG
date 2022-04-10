@@ -8,16 +8,16 @@
 #define XPNG_COMPRESSION_TYPE_EXJPEG 3
 #define XPNG_COMPRESSION_TYPE_UNCOMPRESSED 7
 
-typedef struct xpng_t { u8_t *p; u64_t s; u32_t w, h; _Bool A; } xpng_t;
+typedef struct xpng_t { u8_t *p; u64_t w, h, s; _Bool A; } xpng_t;
 
 _Bool xpng_from_pixmap(const u64_t mode, const xpng_t *pm, const char *const xpng);
 _Bool xpng_to_pixmap(const char *const xpng, xpng_t *pm);
 
 _Bool xpng_from_jpg(const char *const jpg, const char *const xpng);
 
-_Bool xpng_from_pixmap_NTH(u64_t T, const u64_t mode, const xpng_t *pm, const char *const xpng);
-_Bool xpng_to_pixmap_NTH(u64_t T, const char *const xpng, xpng_t *pm);
+_Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *pm, const char *const xpng);
+_Bool xpng_to_pixmap_T(u64_t T, const char *const xpng, xpng_t *pm);
 
-_Bool xpng_from_jpg_NTH(u64_t T, const char *const jpg, const char *const xpng);
+_Bool xpng_from_jpg_T(u64_t T, const char *const jpg, const char *const xpng);
 
 #endif

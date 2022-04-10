@@ -1,20 +1,14 @@
-#include <until_fork.h>
+#include "xpng.h"
 
-#if T_MAX < 1 || T_MAX > 256
-#error T_MAX out of 1..256
+#if T_MAX < 1
+#error
 #endif
 
-typedef struct reg_t { u8_t *p; u64_t s; }      reg_t;
-typedef struct  pm_t { u8_t *p; u64_t w, h, s; } pm_t;
-
-#define F_SZ(filename,    s) if (f_size(filename,    s) != 0)
-#define F_RD(filename, file) if (f_read(filename, file) != 0)
 #define A (s63_t)3
 #define BC(C, B) b->bc = (b->bc << (C)) + (B), b->l += (C)
-#define BCF(C) ((b->bc >> (b->l -= (C))) & bitmask(C))
+#define BCF(C) ((b->bc >> (b->l -= (C))) & BITMASK(C))
 #define EqN == NULL
 
-#define bitmask(n) ((1LU << (n)) - 1)
 #define numBit(v) ((1 + (__builtin_clz(v) ^ 31)) & (-(v) >> 31))
 #define pix_toU fin(3) { pix[i] = (s7_t)pix[i]; pix[i] = (pix[i] << 1) ^ (pix[i] >> 31); }
 #define pix_toS fin(3) pix[i] = (pix[i] >> 1) ^ (-(pix[i] & 1));
@@ -47,25 +41,11 @@ typedef struct  pm_t { u8_t *p; u64_t w, h, s; } pm_t;
         default: fin(3) F[nl][*st[nl]++ = pix[i]]++; \
     } p += A;
 
-
-static u64_t f_size(const char *fn, u64_t *s) {
-    struct stat st; if (stat(fn, &st) != 0) ret 1; *s = st.st_size; ret 0;
-}
-
-#define RET fclose(fp); ret
-static u64_t f_read(const char *fn, reg_t *f) {
-    FILE* fp = fopen(fn, "rb"); if (fp EqN) ret 3;
-    F_SZ(fn, &(f->s)) { RET 3; }
-    MALLOC(f->p, f->s) { RET 1; }
-    if (fread(f->p, 1, f->s, fp) != f->s) { free(f->p); RET 3; }
-    RET 0;
-}
-
 typedef struct task_t { u8_t *p, *f; u64_t w, h;                 } task_t;
 typedef struct data_t { PTHSPT sp; task_t *t, *t_end; s63_t bpr; } data_t;
 
 #define TILE (444 * 444)
-static task_t* compute_props_of_each_tile(u64_t *N, const pm_t *pm) {
+static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
     
     task_t *r, *t; const u8_t *p = pm->p; const u64_t bpr = pm->w * 3;
     u64_t w0, w1, w, h0, h1, h, Nw, Nh;
@@ -130,6 +110,7 @@ static void predict_predictor_rgb(_Bool *Y, _Bool *G, const task_t *t, const s63
     }
     
     u64_t m = 0, r = F1;
+    
     if (F2 < r) m = 1, r = F2;
     if (F3 < r) m = 2, r = F3;
     if (F4 < r) m = 3, r = F4;
@@ -287,8 +268,8 @@ t:  GET_TASK
     
     MALLOC(t->f = f, bsz + rsz + 4) goto e; u32_t m = (1 << 26) + (Y << 25) + (G << 24);
     *(u32_t *)f = (bsz + rsz + 4) + m; f += 4; memcpy(f, xp[18], bsz); f += bsz;
-    fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & bitmask(24)); f += tsz; }
-    fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & bitmask(24)); f += tsz; }
+    fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
+    fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & BITMASK(24)); f += tsz; }
     
     goto t; e: free(xp[0]); return NULL;
 }
@@ -384,13 +365,13 @@ t:  GET_TASK
     
     MALLOC(t->f = f, bsz + rsz + 4) goto e; u32_t m = (1 << 28) + (Y << 25) + (G << 24);
     *(u32_t *)f = (bsz + rsz + 4) + m; f += 4; memcpy(f, xp[18], bsz); f += bsz;
-    fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & bitmask(24)); f += tsz; }
-    fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & bitmask(24)); f += tsz; }
+    fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
+    fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & BITMASK(24)); f += tsz; }
     
     goto t; e: free(xp[0]); return NULL;
 }
 
-static _Bool ___encode(u64_t T, const u64_t mode, const pm_t *pm, const char *const filename) {
+_Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *pm, const char *const filename) {
     
     TIME_PAIR; TIME_GET_START;
     
@@ -403,16 +384,15 @@ static _Bool ___encode(u64_t T, const u64_t mode, const pm_t *pm, const char *co
     
     if (mode == 0) ret fwrite(pm->p, 1, pm->s, of) != pm->s || fclose(of);
     
-    N_INIT; void* enc_th[] = { NULL, enc_1_th, enc_2_th };
-    if (spawn_and_wait(T, &d, 0, enc_th[mode])) ret 1;
+    N_INIT; if (spawn_and_wait(T, &d, 0, (void* []){ NULL, enc_1_th, enc_2_th }[mode])) ret 1;
     
     TIME_GET_STOP; u64_t ns = TIME_DIFF_NS;
     pf("encode, %3d thread%c: %5lu MPx/s\n",
-       (int)T_MAX, T_MAX > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / 3e6)));
+       (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / 3e6)));
     
     u64_t x = 0;
     fin(N) {
-        u32_t sz = *(u32_t *)(t[i].f) & bitmask(24);
+        u32_t sz = *(u32_t *)(t[i].f) & BITMASK(24);
         if (fwrite(t[i].f, 1, sz, of) != sz) ret 1;
         x += sz;
     }
@@ -420,7 +400,7 @@ static _Bool ___encode(u64_t T, const u64_t mode, const pm_t *pm, const char *co
     if (x >= pm->s) {
         if (fclose(of)) ret 1;
         of = fopen(filename, "wb"); if (of EqN) ret 1;
-        h[0] &= bitmask(24);
+        h[0] &= BITMASK(24);
         if (fwrite(h, 1, 8, of) != 8) ret 1;
         if (fwrite(pm->p, 1, pm->s, of) != pm->s) ret 1;
     }
@@ -428,18 +408,18 @@ static _Bool ___encode(u64_t T, const u64_t mode, const pm_t *pm, const char *co
     ret (_Bool)fclose(of);
 }
 
-_Bool png_from_pixmap(const u64_t mode, const pm_t *pm, const char *const filename) {
+_Bool xpng_from_pixmap(const u64_t mode, const xpng_t *pm, const char *const filename) {
     
-    ret ___encode(T_MAX, mode, pm, filename);
+    ret xpng_from_pixmap_T(T_MAX, mode, pm, filename);
 }
 
 static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *x, bitstream_t *b) {
     
     const u32_t *res = (u32_t *)f,
-    *const R = (u32_t *)(f + (*res & bitmask(24))), type = *res++ >> 24;
+    *const R = (u32_t *)(f + (*res & BITMASK(24))), type = *res++ >> 24;
     
     switch (type) {
-        case  1: memset(x, *res >> 24, *res & bitmask(24)); ret;
+        case  1: memset(x, *res >> 24, *res & BITMASK(24)); ret;
         case  2: fin(*res) { FILL; x[i] = BCF(nBit); } ret;
         case  3:
         case  4: break;
@@ -456,18 +436,18 @@ static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *
     
     for (u8_t *const X = x + (st_size & ~1u); x < X; x += 2) {
         
-        x[0] = cum2sym[state0 & bitmask(PROB_BITS)];
-        x[1] = cum2sym[state1 & bitmask(PROB_BITS)];
+        x[0] = cum2sym[state0 & BITMASK(PROB_BITS)];
+        x[1] = cum2sym[state1 & BITMASK(PROB_BITS)];
     
-        state0 = (F[x[0]] * (state0 >> PROB_BITS) + (state0 & bitmask(PROB_BITS))) - cum[x[0]];
-        state1 = (F[x[1]] * (state1 >> PROB_BITS) + (state1 & bitmask(PROB_BITS))) - cum[x[1]];
+        state0 = (F[x[0]] * (state0 >> PROB_BITS) + (state0 & BITMASK(PROB_BITS))) - cum[x[0]];
+        state1 = (F[x[1]] * (state1 >> PROB_BITS) + (state1 & BITMASK(PROB_BITS))) - cum[x[1]];
     
         if (state0 < RANS64_L) { state0 = (state0 << 32) | *res; if (res < R) res++; }
         if (state1 < RANS64_L) { state1 = (state1 << 32) | *res; if (res < R) res++; }
         
     }
     
-    if (st_size & 1) *x = cum2sym[state0 & bitmask(PROB_BITS)];
+    if (st_size & 1) *x = cum2sym[state0 & BITMASK(PROB_BITS)];
 }
 
 #define DEC(pr) \
@@ -504,17 +484,17 @@ static PTHTF(dec_1_th) {
 t:  GET_TASK
     
     const u8_t *f = t->f; u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
-    u32_t t_size = *(u32_t *)f & bitmask(24), m = f[3]; f += 4;
+    u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
     if (!m) { for (; p != P; p += bpr, f += t->w * 3) memcpy(p, f, t->w * 3); goto t; }
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
     fin(3) t->p[i] = (b.bc >> (b.l -= 8)) & 255;
     memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8);
     
-    fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & bitmask(24); }
+    fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
     fix(1, 9, 1) {
         decode_stream(f, 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1), st[i], &b);
-        f += *(u32_t *)f & bitmask(24);
+        f += *(u32_t *)f & BITMASK(24);
     }
     
     s31_t pix[3], nl = 0; const u64_t W = bpr - t->w * 3; p += A; _Bool Y = m & 2, G = m & 1;
@@ -530,7 +510,7 @@ t:  GET_TASK
 
 static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
-    u8_t *st = xp[0], *f = t->f + 4, m = t->f[3] & bitmask(2);
+    u8_t *st = xp[0], *f = t->f + 4, m = t->f[3] & BITMASK(2);
     
     u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * A;
     const u64_t W = bpr - t->w * A; s31_t pix;
@@ -571,7 +551,7 @@ static PTHTF(dec_2_th) {
 t:  GET_TASK
     
     const u8_t *f = t->f; u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
-    u32_t t_size = *(u32_t *)f & bitmask(24), m = f[3]; f += 4;
+    u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
     if (!m) { for (; p != P; p += bpr, f += t->w * 3) memcpy(p, f, t->w * 3); goto t; }
     if ((m >> 4) == 2) { if_grayscale(bpr, t, xp); goto t; }
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
@@ -579,10 +559,10 @@ t:  GET_TASK
     fin(3) t->p[i] = (b.bc >> (b.l -= 8)) & 255;
     memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8);
     
-    fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & bitmask(24); }
+    fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
     fix(1, 9, 1) {
         decode_stream(f, 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1), st[i], &b);
-        f += *(u32_t *)f & bitmask(24);
+        f += *(u32_t *)f & BITMASK(24);
     }
     
     s31_t pix[3], nl = 0; const u64_t W = bpr - t->w * 3; p += A; _Bool Y = m & 2, G = m & 1;
@@ -593,72 +573,67 @@ t:  GET_TASK
     goto t;  e: free(xp[0]); return NULL;
 }
 
-static _Bool ___decode(u64_t T, const reg_t *r, pm_t *pm) {
+_Bool xpng_to_pixmap_T(u64_t T, const char *const xpng, xpng_t *pm) {
     
-    u64_t x = 8, mode; const u32_t *h = (const u32_t *)(r->p);
-    pm->w = (h[0] & bitmask(24)) + 1, pm->h = (h[1] & bitmask(24)) + 1;
+    reg_t r; F_READ(xpng, &r) ret 1; TIME_PAIR; TIME_GET_START;
+    
+    u64_t x = 8, mode; const u32_t *h = (const u32_t *)(r.p);
+    pm->w = (h[0] & BITMASK(24)) + 1, pm->h = (h[1] & BITMASK(24)) + 1;
     if ((mode = h[0] >> 24) > 2) ret 1; pm->s = 3 * pm->w * pm->h;
-    MALLOC(pm->p, pm->s) ret 1; if (!mode) ret !memcpy(pm->p, r->p + 8, pm->s);
-    N_INIT; void* dec_th[] = { NULL, dec_1_th, dec_2_th };
-    fin(N) t[i].f = r->p + x, x += *(u32_t *)t[i].f & bitmask(24);
-    ret spawn_and_wait(T, &d, 0, dec_th[mode]);
+    MALLOC(pm->p, pm->s) ret 1; if (!mode) ret !memcpy(pm->p, r.p + 8, pm->s);
+    N_INIT; fin(N) t[i].f = r.p + x, x += *(u32_t *)t[i].f & BITMASK(24);
+    if (spawn_and_wait(T, &d, 0, (void* []){ NULL, dec_1_th, dec_2_th }[mode])) ret 1;
+    
+    TIME_GET_STOP; u64_t ns = TIME_DIFF_NS;
+    pf("decode, %3d thread%c: %5lu MPx/s\n",
+        (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / 3e6)));
+    
+    ret 0;
 }
 
-static _Bool decode(const reg_t *r, pm_t *pm) {
+_Bool xpng_to_pixmap(const char *const xpng, xpng_t *pm) {
 
-    ret ___decode(T_MAX, r, pm);
+    ret xpng_to_pixmap_T(T_MAX, xpng, pm);
 }
 
-_Bool png_from_jpg(const char *const jpg, const char *const png) {
+_Bool xpng_from_jpg(const char *const jpg, const char *const xpng) {
     
     puts("Not Implemented.");
     
     ret 1;
 }
 
-#define PNG_COMPRESSION_TYPE_FAST 1
-#define PNG_COMPRESSION_TYPE_SLOW 2
-#define PNG_COMPRESSION_TYPE_EXJPEG 3
-#define PNG_COMPRESSION_TYPE_UNCOMPRESSED 7
-
 MAIN_ARGS {
     
     if (argc != 4 || argv[1][0] != '-' || strlen(argv[1]) != 2) goto h;
-    pm_t pm; reg_t r; u64_t ns; TIME_PAIR;  
+    xpng_t pm; reg_t r;
     
     switch (argv[1][1]) {
     
-        case '0': puts("Not Implemented."); ret 1;
         case '1':
         case '2':
         case '7':
             
-            F_RD(argv[2], &r) ret 1;
-            if (sscanf((char *)(r.p + 3), "%lu %lu", &pm.w, &pm.h) != 2) ret 1;
+            if (f_read(argv[2], &r) ||
+                sscanf((char *)(r.p + 3), "%lu %lu", &pm.w, &pm.h) != 2) ret 1;
             pm.s = 3 * pm.w * pm.h, pm.p = r.p + (r.s - pm.s);
-            if (png_from_pixmap(argv[1][1] == '7' ? 0 : argv[1][1] - '0', &pm, argv[3])) ret 1;
-            break;
+            ret (int)xpng_from_pixmap(argv[1][1] == '7' ? 0 : argv[1][1] - '0', &pm, argv[3]);
         
-        case '3': ret (int)png_from_jpg(argv[2], argv[3]);
+        case '3': ret (int)xpng_from_jpg(argv[2], argv[3]);
         case 'd':
             
-            F_RD(argv[2], &r) ret 1;
-            TIME_DIFF_EXEC(if (decode(&r, &pm)) ret 1, NS, ns);
-            pf("decode, %3d thread%c: %5lu MPx/s\n",
-               (int)T_MAX, T_MAX > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm.s / 3e6)));
+            if (xpng_to_pixmap(argv[2], &pm)) ret 1;
             char P6[100]; int l = sprintf(P6, "P6\n%lu %lu\n255\n", pm.w, pm.h);
             FILE *of = fopen(argv[3], "wb"); if (of EqN) ret 1;
-            if (fwrite(P6, 1, l, of) != l || fwrite(pm.p, 1, pm.s, of) != pm.s || fclose(of)) ret 1;
-            break;
+            ret (int)(fwrite(P6, 1, l, of) != l || fwrite(pm.p, 1, pm.s, of) != pm.s || fclose(of));
         
-        default: goto h;
     }
     
-    ret 0; h: pf("\n"
+h:  pf("\n"
 
-    "encode: ./xpng -[0127] example.ppm  example.xpng\n"
-    "        ./xpng -3      example.jpg  example.xpng\n"
-    "decode: ./xpng -d      example.xpng example.ppm\n"
+    "encode: ./xpng -[127] example.ppm  example.xpng\n"
+    "        ./xpng -3     example.jpg  example.xpng\n"
+    "decode: ./xpng -d     example.xpng example.ppm\n"
 
     "\n"); ret 1;
 }

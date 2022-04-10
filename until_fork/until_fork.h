@@ -1,6 +1,10 @@
 #ifndef ___UNTIL_FORK_H
 #define ___UNTIL_FORK_H
 
+#if __SIZEOF_POINTER__ != 8
+#error
+#endif
+
 #include <pthread.h>
 #include <stdint.h>
 #include <unistd.h>
@@ -28,12 +32,23 @@ typedef int16_t s15_t; typedef uint16_t u16_t;
 typedef int32_t s31_t; typedef uint32_t u32_t;
 typedef int64_t s63_t; typedef uint64_t u64_t;
 
+typedef struct reg_t { u8_t *p; u64_t s; } reg_t;
+
+_Bool  f_size(const char *fn,       u64_t *s);
+_Bool  f_read(const char *fn,       reg_t *f);
+_Bool f_write(const char *fn, const reg_t *f);
+
+#define  F_SIZE(filename,   s_ptr) if ( f_size(filename,   s_ptr))
+#define  F_READ(filename, reg_ptr) if ( f_read(filename, reg_ptr))
+#define F_WRITE(filename, reg_ptr) if (f_write(filename, reg_ptr))
 
 #define MALLOC(pointer, reg_size) if ((pointer = malloc(reg_size))    == NULL)
 #define CALLOC(pointer, reg_size) if ((pointer = calloc(reg_size, 1)) == NULL)
 
 #define pf printf
 #define ret return
+#define BITMASK_SHL(n, shl) (((1LU << (n)) - 1) << (shl))
+#define BITMASK(n) BITMASK_SHL(n, 0)
 
 #define fin(stop) for (ssize_t i = -1, _stop = stop; ++i < _stop;)
 #define fiN(iter_name, stop) for (ssize_t iter_name = -1, _stop = stop; ++iter_name < _stop;)
