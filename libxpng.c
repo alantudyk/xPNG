@@ -20,25 +20,18 @@
 #define p3a(operator) fin(3) pix[i] = \
     pix[i] operator ((((3 * p[i - A] + 3 * p[i - bpr]) - 2 * p[(i - bpr) - A]) + 2) >> 2)
 #define numB(from) nl = from[0] | from[1] | from[2]; nl = numBit(nl);
-#define ENC(pr) \
-    pix_copy(pix, p); pr(-); pix_toU; numB(pix); \
-    F[0][(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
+#define ENC_ \
+    pix_toU; numB(pix); F[0][(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
     switch (nl) { \
         case  0: break; \
         case  1: F[1][*st[1]++ = (pix[0] << 2) | (pix[1] << 1) | pix[2]]++; break; \
         case  2: F[2][*st[2]++ = (pix[0] << 4) | (pix[1] << 2) | pix[2]]++; break; \
         default: fin(3) F[nl][*st[nl]++ = pix[i]]++; \
     } p += A;
+#define ENC(pr) pix_copy(pix, p); pr(-); ENC_
 #define ENC4 \
     pix_copy(pix, p); if (Y) p3a(-); else p2a(-); \
-    if (G) pix[0] -= pix[1], pix[2] -= pix[1]; pix_toU; numB(pix); \
-    F[0][(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
-    switch (nl) { \
-        case  0: break; \
-        case  1: F[1][*st[1]++ = (pix[0] << 2) | (pix[1] << 1) | pix[2]]++; break; \
-        case  2: F[2][*st[2]++ = (pix[0] << 4) | (pix[1] << 2) | pix[2]]++; break; \
-        default: fin(3) F[nl][*st[nl]++ = pix[i]]++; \
-    } p += A;
+    if (G) pix[0] -= pix[1], pix[2] -= pix[1]; ENC_
 
 typedef struct task_t { u8_t *p, *f; u64_t w, h;                 } task_t;
 typedef struct data_t { PTHSPT sp; task_t *t, *t_end; s63_t bpr; } data_t;
@@ -78,35 +71,30 @@ static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
 }
 
 #define STEP 4
-#if STEP < 2
-#error
-#endif
-
-#define pix_toU_(from) \
-    fin(3) { from[i] = (s7_t)from[i]; from[i] = (from[i] << 1) ^ (from[i] >> 31); }
-#define numB_(to, from) to = from[0] | from[1] | from[2]; to = numBit(to);
-static void predict_predictor_rgb(_Bool *Y, _Bool *G, const task_t *t, const s63_t bpr) {
+#define PP_RGBX(s) \
+    fin(3) { pix##s[i] = (s7_t)pix##s[i]; pix##s[i] = (pix##s[i] << 1) ^ (pix##s[i] >> 31); } \
+    n##s = pix##s[0] | pix##s[1] | pix##s[2]; F##s += numBit(n##s);
+static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
     
-    if (t->w < STEP && t->h < STEP) ret;
+    if (STEP < 2) exit(1);
+    if (t->w < STEP || t->h < STEP) ret 0;
     
     u32_t F1 = 0, F2 = 0, F3 = 0, F4 = 0;
-    const s63_t BPR = bpr * STEP, w = (t->w - t->w % STEP) * 3, W = BPR - w;
-    const u8_t *p = t->p + (BPR - bpr) + (STEP - 1) * 3,
+    const s63_t BPR = bpr * STEP, w = (t->w - t->w % STEP) * PXSZ, W = BPR - w;
+    const u8_t *p = t->p + (BPR - bpr) + (STEP - 1) * PXSZ,
                *const P = p + BPR * (t->h / STEP),
                *L = p + w;
     
     for (; p != P; L += BPR, p += W) {
-        for (; p != L; p += STEP * 3) {
-            s31_t pix1[3], pix2[3], pix3[3], pix4[3], nl1, nl2, nl3, nl4;
-            s31_t *pix[] = { pix1, pix2, pix3, pix4 };
+        for (; p != L; p += STEP * PXSZ) {
+            if (PXSZ == 4 && p[3] == 0) continue;
+            s31_t pix1[3], pix2[3], pix3[3], pix4[3], n1, n2, n3, n4;
             fin(3)
-                pix2[i] = pix1[i] = p[i] - ((p[i - A] + p[i - bpr] + 1) >> 1),
-                pix4[i] = pix3[i] = 
-                    p[i] - ((((3 * p[i - A] + 3 * p[i - bpr]) - 2 * p[(i - bpr) - A]) + 2) >> 2);
+                pix2[i] = pix1[i] = p[i] - ((p[i - PXSZ] + p[i - bpr] + 1) >> 1),
+                pix4[i] = pix3[i] = p[i] - ((((3 * p[i - PXSZ] + 3 * p[i - bpr])
+                                               - 2 * p[(i - bpr) - PXSZ]) + 2) >> 2);
             pix2[0] -= pix2[1], pix2[2] -= pix2[1]; pix4[0] -= pix4[1], pix4[2] -= pix4[1];
-            fiN(j, 4) { s31_t *px = pix[j]; pix_toU_(px); }
-            numB_(nl1, pix1); numB_(nl2, pix2); numB_(nl3, pix3); numB_(nl4, pix4);
-            F1 += nl1, F2 += nl2, F3 += nl3, F4 += nl4;
+            PP_RGBX(1); PP_RGBX(2); PP_RGBX(3); PP_RGBX(4);
         }
     }
     
@@ -116,9 +104,10 @@ static void predict_predictor_rgb(_Bool *Y, _Bool *G, const task_t *t, const s63
     if (F3 < r) m = 2, r = F3;
     if (F4 < r) m = 3, r = F4;
     
-    *Y = m & 2, *G = m & 1;
+    ret m;
 }
 
+#undef PP_RGBX
 #undef STEP
 
 typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
@@ -252,7 +241,7 @@ t:  GET_TASK
     fin(3) b.bc = (b.bc << 8) + t->p[i];
     const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += A;
-    _Bool Y = 0, G = 0; predict_predictor_rgb(&Y, &G, t, bpr);
+    const u64_t pr = pp_rgbx(t, bpr, 3); const _Bool Y = pr & 2, G = pr & 1;
     
     for (; p != L;) { ENC(p1x); } p += W;
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
@@ -349,7 +338,7 @@ t:  GET_TASK
     fin(3) b.bc = (b.bc << 8) + t->p[i];
     const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += A;
-    _Bool Y = 0, G = 0; predict_predictor_rgb(&Y, &G, t, bpr);
+    const u64_t pr = pp_rgbx(t, bpr, 3); const _Bool Y = pr & 2, G = pr & 1;
     
     for (; p != L;) { ENC(p1x); } p += W;
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
@@ -453,7 +442,7 @@ static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *
     if (st_size & 1) *x = cum2sym[state0 & BITMASK(PROB_BITS)];
 }
 
-#define DEC(pr) \
+#define DEC_ \
     nl = *cx[nl]++; \
     switch (nl) { \
         case  0: fin(3) pix[i] = 0; break; \
@@ -462,20 +451,11 @@ static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *
         case  2: pix[2] = *st[2]++, \
                  pix[0] = (pix[2] >> 4), pix[1] = (pix[2] >> 2) & 3, pix[2] &= 3; break; \
         default: fin(3) pix[i] = *st[nl]++; \
-    } pix_toS; pr(+); pix_copy(p, pix); p += A;
-#define DEC4 \
-    nl = *cx[nl]++; \
-    switch (nl) { \
-        case  0: fin(3) pix[i] = 0; break; \
-        case  1: pix[2] = *st[1]++, \
-                 pix[0] = (pix[2] >> 2), pix[1] = (pix[2] >> 1) & 1, pix[2] &= 1; break; \
-        case  2: pix[2] = *st[2]++, \
-                 pix[0] = (pix[2] >> 4), pix[1] = (pix[2] >> 2) & 3, pix[2] &= 3; break; \
-        default: fin(3) pix[i] = *st[nl]++; \
-    } pix_toS; \
+    } pix_toS;
+#define DEC(pr) DEC_; pr(+); pix_copy(p, pix); p += A;
+#define DEC4 DEC_; \
     if (G) pix[0] += pix[1], pix[2] += pix[1]; if (Y) p3a(+); else p2a(+); \
     pix_copy(p, pix); p += A;
-
 
 static PTHTF(dec_1_th) {
     
@@ -599,9 +579,14 @@ _Bool xpng_to_pixmap(const char *const xpng, xpng_t *pm) {
     ret xpng_to_pixmap_T(T_MAX, xpng, pm);
 }
 
-_Bool xpng_from_jpg(const char *const jpg, const char *const xpng) {
+_Bool xpng_from_jpg_T(u64_t T, const char *const jpg, const char *const xpng) {
     
-    puts("Not Implemented.");
+    puts("\nNot Implemented.\n");
     
     ret 1;
+}
+
+_Bool xpng_from_jpg(const char *const jpg, const char *const xpng) {
+    
+    ret xpng_from_jpg_T(T_MAX, jpg, xpng);
 }
