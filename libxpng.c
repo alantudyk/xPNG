@@ -113,7 +113,7 @@ static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
 typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
 #define N_INIT u64_t N; task_t *t = compute_props_of_each_tile(&N, pm); \
     if (t == NULL) ret 1; if (T < 1 || T > 256) T = T_MAX; if (N < T) T = N; \
-    data_t d = { .t = t, .t_end = t + N, .bpr = A * pm->w }; PTHSPI(&d.sp);
+    data_t d = { .t = t, .t_end = t + N, .bpr = (3) * pm->w }; PTHSPI(&d.sp);
 #define GET_TASK PTHSPL(&d->sp); \
     if (d->t == d->t_end) { PTHSPU(&d->sp); goto e; } t = d->t++; PTHSPU(&d->sp);
 
@@ -363,15 +363,43 @@ t:  GET_TASK
     goto t; e: free(xp[0]); return NULL;
 }
 
-_Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *pm, const char *const filename) {
+#undef A
+
+static _Bool remove_unnecessary_A(xpng_t *const d) {
     
+    if (d->A == 0) ret 0;
+    
+    u32_t *p = (void *)(d->p), *const P = (void *)(d->p + d->s);
+    for (; p < P; p++)
+        if ((*p & BITMASK_SHL(8, 24)) != BITMASK_SHL(8, 24)) ret 0;
+    
+    p = (void *)(d->p), d->s -= (d->s / 4), d->A = 0;
+    MALLOC(d->p, d->s) ret 1;
+    
+    u8_t *p2 = d->p, *const P2 = p2 + (d->s - 3);
+    for (; p2 < P2; p2 += 3, p++)
+        *(u32_t *)p2 = *p;
+        
+    *(u16_t *)p2 = *p, p2[2] = *p >> 16;
+    
+    ret 0;
+}
+
+_Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const char *const fn) {
+
+#ifdef SYNC_IO
+
     TIME_PAIR; TIME_GET_START;
     
-    if (pm->w > (1 << 24) || !pm->w || mode > 2 ||
-        pm->h > (1 << 24) || !pm->h || pm->w * pm->h * 3 != pm->s || pm->p == NULL) ret 1;
+    if (pm_->w > (1 << 24) || !pm_->w || mode > 2 ||
+        pm_->h > (1 << 24) || !pm_->h || pm_->w * pm_->h * (3 + pm_->A) != pm_->s ||
+        pm_->p == NULL) ret 1;
+    
+    const xpng_t pmv = *pm_, *const pm = &pmv;
+    if (remove_unnecessary_A((xpng_t *)pm)) ret 1;
     
     u32_t h[2] = { (pm->w - 1) | (mode << 24), pm->h - 1 };
-    FILE *of = fopen(filename, "wb");
+    FILE *of = fopen(fn, "wb");
     if (of == NULL || fwrite(h, 1, 8, of) != 8) ret 1;
     
     if (mode == 0) ret fwrite(pm->p, 1, pm->s, of) != pm->s || fclose(of);
@@ -392,13 +420,20 @@ _Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *pm, const char
     if (x >= pm->s) {
         h[0] &= BITMASK(24);
         if (fclose(of)
-            || (of = fopen(filename, "wb")) == NULL
+            || (of = fopen(fn, "wb")) == NULL
             || fwrite(h, 1, 8, of) != 8
             || fwrite(pm->p, 1, pm->s, of) != pm->s) ret 1;
     }
     
     ret (_Bool)fclose(of);
+
+#else
+#error
+#endif
+
 }
+
+#define A (s63_t)3
 
 _Bool xpng_from_pixmap(const u64_t mode, const xpng_t *pm, const char *const filename) {
     
@@ -557,7 +592,9 @@ t:  GET_TASK
 }
 
 _Bool xpng_to_pixmap_T(u64_t T, const char *const xpng, xpng_t *pm) {
-    
+
+#ifdef SYNC_IO
+
     reg_t r; F_READ(xpng, &r) ret 1; TIME_PAIR; TIME_GET_START;
     
     u64_t x = 8, mode; const u32_t *h = (const u32_t *)(r.p);
@@ -572,6 +609,11 @@ _Bool xpng_to_pixmap_T(u64_t T, const char *const xpng, xpng_t *pm) {
         (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / 3e6)));
     
     ret 0;
+    
+#else
+#error
+#endif
+
 }
 
 _Bool xpng_to_pixmap(const char *const xpng, xpng_t *pm) {
