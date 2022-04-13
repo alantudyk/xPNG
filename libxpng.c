@@ -4,7 +4,8 @@
 #error
 #endif
 
-#define A (s63_t)3
+#define RGB  3
+#define RGBA 4
 #define BC(C, B) b->bc = (b->bc << (C)) + (B), b->l += (C)
 #define BCF(C) ((b->bc >> (b->l -= (C))) & BITMASK(C))
 
@@ -14,11 +15,13 @@
 #define FILL  if (b->l  < 32) { b->bc <<= 32, b->l += 32; if (b->_p < b->DP) b->bc += *(b->_p)++; }
 #define FLUSH if (b->l >= 32) *(b->_p)++ = b->bc >> (b->l -= 32)
 #define pix_copy(to, from) fin(3) to[i] = from[i];
-#define p1x(operator) fin(3) pix[i] = pix[i] operator p[i - A];
+#define p1x_(pxsz) p[i - pxsz]
+#define p1x(operator) fin(3) pix[i] = pix[i] operator p1x_(RGB);
 #define p1y(operator) fin(3) pix[i] = pix[i] operator p[i - bpr];
-#define p2a(operator) fin(3) pix[i] = pix[i] operator ((p[i - A] + p[i - bpr] + 1) >> 1);
-#define p3a(operator) fin(3) pix[i] = \
-    pix[i] operator ((((3 * p[i - A] + 3 * p[i - bpr]) - 2 * p[(i - bpr) - A]) + 2) >> 2)
+#define p2a_(pxsz) ((p[i - pxsz] + p[i - bpr] + 1) >> 1)
+#define p2a(operator) fin(3) pix[i] = pix[i] operator p2a_(RGB);
+#define p3a_(pxsz) ((((3 * p[i - pxsz] + 3 * p[i - bpr]) - 2 * p[(i - bpr) - pxsz]) + 2) >> 2)
+#define p3a(operator) fin(3) pix[i] = pix[i] operator p3a_(RGB)
 #define numB(from) nl = from[0] | from[1] | from[2]; nl = numBit(nl);
 #define ENC_ \
     pix_toU; numB(pix); F[0][(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
@@ -27,7 +30,7 @@
         case  1: F[1][*st[1]++ = (pix[0] << 2) | (pix[1] << 1) | pix[2]]++; break; \
         case  2: F[2][*st[2]++ = (pix[0] << 4) | (pix[1] << 2) | pix[2]]++; break; \
         default: fin(3) F[nl][*st[nl]++ = pix[i]]++; \
-    } p += A;
+    } p += RGB;
 #define ENC(pr) pix_copy(pix, p); pr(-); ENC_
 #define ENC4 \
     pix_copy(pix, p); if (Y) p3a(-); else p2a(-); \
@@ -37,12 +40,13 @@ typedef struct task_t { u8_t *p, *f; u64_t w, h;                 } task_t;
 typedef struct data_t { PTHSPT sp; task_t *t, *t_end; s63_t bpr; } data_t;
 
 #define TILE (444 * 444)
+__attribute__ ((noinline))
 static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
     
-    task_t *r, *t; const u8_t *p = pm->p; const u64_t bpr = pm->w * 3;
+    task_t *r, *t; const u8_t *p = pm->p; const u64_t bpr = pm->w * RGB;
     u64_t w0, w1, w, h0, h1, h, Nw, Nh;
     
-    if (pm->s <= TILE * 3) Nw = Nh = 1, w0 = pm->w, h0 = pm->h; else {
+    if (pm->s <= TILE * RGB) Nw = Nh = 1, w0 = pm->w, h0 = pm->h; else {
 
         if (pm->w < 444) w1 = w = pm->w, h1 = h = TILE / w;
         else if (pm->h < 444) h1 = h = pm->h, w1 = w = TILE / h;
@@ -61,7 +65,7 @@ static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
         fiN(j, Nw) {
             t->w = (j == 0) ? w0 : (j == 1 ? w1 : w);
             t->h = (i == 0) ? h0 : (i == 1 ? h1 : h);
-            t->p = (u8_t *)p; p += t->w * 3;
+            t->p = (u8_t *)p; p += t->w * RGB;
             t++;
         }
         p = pm->p + h0 * bpr + (i > 0 ? h1 * bpr + h * bpr * (i - 1) : 0);
@@ -74,6 +78,7 @@ static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
 #define PP_RGBX(s) \
     fin(3) { pix##s[i] = (s7_t)pix##s[i]; pix##s[i] = (pix##s[i] << 1) ^ (pix##s[i] >> 31); } \
     n##s = pix##s[0] | pix##s[1] | pix##s[2]; F##s += numBit(n##s);
+__attribute__ ((noinline))
 static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
     
     if (STEP < 2) exit(1);
@@ -85,17 +90,35 @@ static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
                *const P = p + BPR * (t->h / STEP),
                *L = p + w;
     
-    for (; p != P; L += BPR, p += W) {
-        for (; p != L; p += STEP * PXSZ) {
-            if (PXSZ == 4 && p[3] == 0) continue;
-            s31_t pix1[3], pix2[3], pix3[3], pix4[3], n1, n2, n3, n4;
-            fin(3)
-                pix2[i] = pix1[i] = p[i] - ((p[i - PXSZ] + p[i - bpr] + 1) >> 1),
-                pix4[i] = pix3[i] = p[i] - ((((3 * p[i - PXSZ] + 3 * p[i - bpr])
-                                               - 2 * p[(i - bpr) - PXSZ]) + 2) >> 2);
-            pix2[0] -= pix2[1], pix2[2] -= pix2[1]; pix4[0] -= pix4[1], pix4[2] -= pix4[1];
-            PP_RGBX(1); PP_RGBX(2); PP_RGBX(3); PP_RGBX(4);
+    s31_t pix1[3], pix2[3], pix3[3], pix4[3], n1, n2, n3, n4;
+    
+    if (PXSZ == 3) {
+        
+        for (; p != P; L += BPR, p += W) {
+            for (; p != L; p += STEP * RGB) {
+                fin(3)
+                    pix2[i] = pix1[i] = p[i] - p2a_(RGB),
+                    pix4[i] = pix3[i] = p[i] - p3a_(RGB);
+                pix2[0] -= pix2[1], pix2[2] -= pix2[1];
+                pix4[0] -= pix4[1], pix4[2] -= pix4[1];
+                PP_RGBX(1); PP_RGBX(2); PP_RGBX(3); PP_RGBX(4);
+            }
         }
+    
+    } else {
+        
+        for (; p != P; L += BPR, p += W) {
+            for (; p != L; p += STEP * RGBA) {
+                if (p[3] == 0) continue;
+                fin(3)
+                    pix2[i] = pix1[i] = p[i] - p2a_(RGBA),
+                    pix4[i] = pix3[i] = p[i] - p3a_(RGBA);
+                pix2[0] -= pix2[1], pix2[2] -= pix2[1];
+                pix4[0] -= pix4[1], pix4[2] -= pix4[1];
+                PP_RGBX(1); PP_RGBX(2); PP_RGBX(3); PP_RGBX(4);
+            }
+        }
+    
     }
     
     u64_t m = 0, r = F1;
@@ -113,7 +136,7 @@ static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
 typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
 #define N_INIT u64_t N; task_t *t = compute_props_of_each_tile(&N, pm); \
     if (t == NULL) ret 1; if (T < 1 || T > 256) T = T_MAX; if (N < T) T = N; \
-    data_t d = { .t = t, .t_end = t + N, .bpr = (3) * pm->w }; PTHSPI(&d.sp);
+    data_t d = { .t = t, .t_end = t + N, .bpr = (RGB + pm->A) * pm->w }; PTHSPI(&d.sp);
 #define GET_TASK PTHSPL(&d->sp); \
     if (d->t == d->t_end) { PTHSPU(&d->sp); goto e; } t = d->t++; PTHSPU(&d->sp);
 
@@ -240,7 +263,7 @@ t:  GET_TASK
     bitstream_t b = { ._p = (u32_t *)(xp[18] + 4), .l = 24 };
     fin(3) b.bc = (b.bc << 8) + t->p[i];
     const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
-    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += A;
+    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += RGB;
     const u64_t pr = pp_rgbx(t, bpr, 3); const _Bool Y = pr & 2, G = pr & 1;
     
     for (; p != L;) { ENC(p1x); } p += W;
@@ -266,15 +289,15 @@ t:  GET_TASK
     goto t; e: free(xp[0]); return NULL;
 }
 
-#define G_p1x(to, operator) to = to operator p[0 - A];
+#define G_p1x(to, operator) to = to operator p[0 - RGB];
 #define G_p1y(to, operator) to = to operator p[0 - bpr];
-#define G_p2a(to, operator) to = to operator ((p[0 - A] + p[0 - bpr] + 1) >> 1);
+#define G_p2a(to, operator) to = to operator ((p[0 - RGB] + p[0 - bpr] + 1) >> 1);
 #define G_p3a(to, operator) to = \
-    to operator ((((3 * p[0 - A] + 3 * p[0 - bpr]) - 2 * p[(0 - bpr) - A]) + 2) >> 2);
+    to operator ((((3 * p[0 - RGB] + 3 * p[0 - bpr]) - 2 * p[(0 - bpr) - RGB]) + 2) >> 2);
 #define G_toU(from) from = (s7_t)from; from = (from << 1) ^ (from >> 31);
 #define ENC_GRAY(pr) \
     if ((pix_0 = p[0]) != p[1] || p[1] != p[2]) ret 0; pr(pix_0, -); \
-    G_toU(pix_0); fin(4) F[i][*st[i]++ = pix_0]++; p += A;
+    G_toU(pix_0); fin(4) F[i][*st[i]++ = pix_0]++; p += RGB;
 
 static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
@@ -288,10 +311,10 @@ static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     };
     const u64_t W = bpr - t->w * 3; u32_t F[4][256] = {};
     s31_t pix_0, pix_1, pix_2, pix_3;
-    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * A; p += A;
+    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB; p += RGB;
     
     for (; p != L;) { ENC_GRAY(G_p1x); } p += W;
-    for (; p != P;) { ENC_GRAY(G_p1y); for (L += bpr; p != L; p += A) {
+    for (; p != P;) { ENC_GRAY(G_p1y); for (L += bpr; p != L; p += RGB) {
         if ((pix_0 = pix_1 = pix_2 = pix_3 = p[0]) != p[1] || p[1] != p[2]) ret 0;
         G_p1x(pix_0, -); G_toU(pix_0); F[0][*st[0]++ = pix_0]++;
         G_p1y(pix_1, -); G_toU(pix_1); F[1][*st[1]++ = pix_1]++;
@@ -310,8 +333,8 @@ static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
     if (bsz + rsz >= (tsz = t->w * t->h)) {
         MALLOC(t->f = f, tsz + 4) ret 0; *(u32_t *)f = tsz + 4 + (5 << 27); f += 4;
-        for (p = t->p, L = p + t->w * A; p != P; p += W, L += bpr)
-            for (; p != L; p += A) *f++ = *p;
+        for (p = t->p, L = p + t->w * RGB; p != P; p += W, L += bpr)
+            for (; p != L; p += RGB) *f++ = *p;
         ret 1;
     }
     
@@ -337,7 +360,7 @@ t:  GET_TASK
     bitstream_t b = { ._p = (u32_t *)(xp[18] + 4), .l = 24 };
     fin(3) b.bc = (b.bc << 8) + t->p[i];
     const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
-    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += A;
+    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += RGB;
     const u64_t pr = pp_rgbx(t, bpr, 3); const _Bool Y = pr & 2, G = pr & 1;
     
     for (; p != L;) { ENC(p1x); } p += W;
@@ -363,8 +386,7 @@ t:  GET_TASK
     goto t; e: free(xp[0]); return NULL;
 }
 
-#undef A
-
+__attribute__ ((noinline))
 static _Bool remove_unnecessary_A(xpng_t *const d) {
     
     if (d->A == 0) ret 0;
@@ -433,8 +455,6 @@ _Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *const pm_, con
 
 }
 
-#define A (s63_t)3
-
 _Bool xpng_from_pixmap(const u64_t mode, const xpng_t *pm, const char *const filename) {
     
     ret xpng_from_pixmap_T(T_MAX, mode, pm, filename);
@@ -487,10 +507,10 @@ static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *
                  pix[0] = (pix[2] >> 4), pix[1] = (pix[2] >> 2) & 3, pix[2] &= 3; break; \
         default: fin(3) pix[i] = *st[nl]++; \
     } pix_toS;
-#define DEC(pr) DEC_; pr(+); pix_copy(p, pix); p += A;
+#define DEC(pr) DEC_; pr(+); pix_copy(p, pix); p += RGB;
 #define DEC4 DEC_; \
     if (G) pix[0] += pix[1], pix[2] += pix[1]; if (Y) p3a(+); else p2a(+); \
-    pix_copy(p, pix); p += A;
+    pix_copy(p, pix); p += RGB;
 
 static PTHTF(dec_1_th) {
     
@@ -515,7 +535,7 @@ t:  GET_TASK
         f += *(u32_t *)f & BITMASK(24);
     }
     
-    s31_t pix[3], nl = 0; const u64_t W = bpr - t->w * 3; p += A; _Bool Y = m & 2, G = m & 1;
+    s31_t pix[3], nl = 0; const u64_t W = bpr - t->w * 3; p += RGB; _Bool Y = m & 2, G = m & 1;
     
     for (; p != L;) { DEC(p1x); } p += W;
     for (; p != P;) { DEC(p1y); for (L += bpr; p != L;) { DEC4; } p += W; }
@@ -524,29 +544,29 @@ t:  GET_TASK
 }
 
 #define DEC_GRAY(pr) \
-    pix = *st++; pix = (pix >> 1) ^ (-(pix & 1)); p[0] = p[1] = p[2] = pr(pix, +); p += A;
+    pix = *st++; pix = (pix >> 1) ^ (-(pix & 1)); p[0] = p[1] = p[2] = pr(pix, +); p += RGB;
 
 static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
     u8_t *st = xp[0], *f = t->f + 4, m = t->f[3] & BITMASK(2);
     
-    u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * A;
-    const u64_t W = bpr - t->w * A; s31_t pix;
+    u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB;
+    const u64_t W = bpr - t->w * RGB; s31_t pix;
     
     if (t->f[3] & (1 << 3)) {
         for (; p != P; p += W, L += bpr)
-            for (; p != L; p += A) p[0] = p[1] = p[2] = *f++;
+            for (; p != L; p += RGB) p[0] = p[1] = p[2] = *f++;
         ret;
     }
     
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
-    p[0] = p[1] = p[2] = (b.bc >> (b.l -= 8)) & 255; p += A;
+    p[0] = p[1] = p[2] = (b.bc >> (b.l -= 8)) & 255; p += RGB;
     
     decode_stream(f, 256, 8, st, &b);
     
     for (; p != L;) { DEC_GRAY(G_p1x); } p += W;
-    for (; p != P;) { DEC_GRAY(G_p1y); for (L += bpr; p != L; p += A) {
+    for (; p != P;) { DEC_GRAY(G_p1y); for (L += bpr; p != L; p += RGB) {
         pix = *st++; pix = (pix >> 1) ^ (-(pix & 1));
         switch (m) {
             case 0: G_p1x(pix, +); break;
@@ -583,7 +603,7 @@ t:  GET_TASK
         f += *(u32_t *)f & BITMASK(24);
     }
     
-    s31_t pix[3], nl = 0; const u64_t W = bpr - t->w * 3; p += A; _Bool Y = m & 2, G = m & 1;
+    s31_t pix[3], nl = 0; const u64_t W = bpr - t->w * 3; p += RGB; _Bool Y = m & 2, G = m & 1;
     
     for (; p != L;) { DEC(p1x); } p += W;
     for (; p != P;) { DEC(p1y); for (L += bpr; p != L;) { DEC4; } p += W; }
@@ -598,7 +618,7 @@ _Bool xpng_to_pixmap_T(u64_t T, const char *const xpng, xpng_t *pm) {
     reg_t r; F_READ(xpng, &r) ret 1; TIME_PAIR; TIME_GET_START;
     
     u64_t x = 8, mode; const u32_t *h = (const u32_t *)(r.p);
-    pm->w = (h[0] & BITMASK(24)) + 1, pm->h = (h[1] & BITMASK(24)) + 1;
+    pm->w = (h[0] & BITMASK(24)) + 1, pm->h = (h[1] & BITMASK(24)) + 1, pm->A = (h[1] >> 24) & 1;
     if ((mode = h[0] >> 24) > 2) ret 1; pm->s = 3 * pm->w * pm->h;
     MALLOC(pm->p, pm->s) ret 1; if (!mode) ret !memcpy(pm->p, r.p + 8, pm->s);
     N_INIT; fin(N) t[i].f = r.p + x, x += *(u32_t *)t[i].f & BITMASK(24);
