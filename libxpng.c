@@ -387,13 +387,28 @@ t:  GET_TASK
 }
 
 __attribute__ ((noinline))
-static _Bool remove_unnecessary_A(xpng_t *const d) {
+static _Bool normalize_RGBA(xpng_t *const d) {
     
     if (d->A == 0) ret 0;
     
     u32_t *p = (void *)(d->p), *const P = (void *)(d->p + d->s);
-    for (; p < P; p++)
-        if ((*p & BITMASK_SHL(8, 24)) != BITMASK_SHL(8, 24)) ret 0;
+    _Bool a = 0, inv_rgb = 0;
+    for (; p < P; p++) {
+        if ((*p >> 24) == 0 && *p != 0) { inv_rgb = 1; break; };
+        if ((*p >> 24) != 255) a = 1;
+    }
+    
+    if (inv_rgb) {
+        
+        p = (void *)(d->p); MALLOC(d->p, d->s) ret 1;
+        u32_t *p2 = (void *)(d->p);
+        for (; p < P; p++, p2++)
+            *p2 = (*p >> 24) ? *p : 0;
+        
+        ret 0;
+    }
+    
+    if (a) ret 0;
     
     p = (void *)(d->p), d->s -= (d->s / 4), d->A = 0;
     MALLOC(d->p, d->s) ret 1;
@@ -407,7 +422,7 @@ static _Bool remove_unnecessary_A(xpng_t *const d) {
     ret 0;
 }
 
-_Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const char *const fn) {
+_Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const char *const fn) {
 
 #ifdef SYNC_IO
 
@@ -418,7 +433,7 @@ _Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *const pm_, con
         pm_->p == NULL) ret 1;
     
     const xpng_t pmv = *pm_, *const pm = &pmv;
-    if (remove_unnecessary_A((xpng_t *)pm)) ret 1;
+    if (normalize_RGBA((xpng_t *)pm)) ret 1;
     
     u32_t h[2] = { (pm->w - 1) | (mode << 24), pm->h - 1 };
     FILE *of = fopen(fn, "wb");
@@ -447,6 +462,8 @@ _Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *const pm_, con
             || fwrite(pm->p, 1, pm->s, of) != pm->s) ret 1;
     }
     
+e:  if (pm->p != pm_->p) free(pm->p);
+    
     ret (_Bool)fclose(of);
 
 #else
@@ -455,9 +472,9 @@ _Bool xpng_from_pixmap_T(u64_t T, const u64_t mode, const xpng_t *const pm_, con
 
 }
 
-_Bool xpng_from_pixmap(const u64_t mode, const xpng_t *pm, const char *const filename) {
+_Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename) {
     
-    ret xpng_from_pixmap_T(T_MAX, mode, pm, filename);
+    ret xpng_store_T(T_MAX, mode, pm, filename);
 }
 
 static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *x, bitstream_t *b) {
@@ -611,7 +628,7 @@ t:  GET_TASK
     goto t;  e: free(xp[0]); return NULL;
 }
 
-_Bool xpng_to_pixmap_T(u64_t T, const char *const xpng, xpng_t *pm) {
+_Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
 
 #ifdef SYNC_IO
 
@@ -636,9 +653,9 @@ _Bool xpng_to_pixmap_T(u64_t T, const char *const xpng, xpng_t *pm) {
 
 }
 
-_Bool xpng_to_pixmap(const char *const xpng, xpng_t *pm) {
+_Bool xpng_load(const char *const xpng, xpng_t *pm) {
 
-    ret xpng_to_pixmap_T(T_MAX, xpng, pm);
+    ret xpng_load_T(T_MAX, xpng, pm);
 }
 
 _Bool xpng_from_jpg_T(u64_t T, const char *const jpg, const char *const xpng) {
