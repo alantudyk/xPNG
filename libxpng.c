@@ -6,14 +6,21 @@
 
 #define RGB  3
 #define RGBA 4
+
+#define BITSTREAM_WRITE(b, C, B) b.bc = (b.bc << (C)) | (B), b.l += (C)
+#define BITSTREAM_READ(b, C) ((b.bc >> (b.l -= (C))) & BITMASK(C))
+#define BITSTREAM_FLUSH(b) if (b.l >= 32) *(b._p)++ = b.bc >> (b.l -= 32)
+#define BITSTREAM_END(b) if (b.l > 0) *(b._p)++ = b.bc << (32 - b.l)
+#define BITSTREAM_FILL(b) if (b.l < 32) { b.bc <<= 32, b.l += 32; if (b._p < b.DP) b.bc += *(b._p)++; }
+
 #define BC(C, B) b->bc = (b->bc << (C)) + (B), b->l += (C)
 #define BCF(C) ((b->bc >> (b->l -= (C))) & BITMASK(C))
+#define FILL  if (b->l  < 32) { b->bc <<= 32, b->l += 32; if (b->_p < b->DP) b->bc += *(b->_p)++; }
+#define FLUSH if (b->l >= 32) *(b->_p)++ = b->bc >> (b->l -= 32)
 
 #define numBit(v) ((1 + (__builtin_clz(v) ^ 31)) & (-(v) >> 31))
 #define pix_toU fin(3) { pix[i] = (s7_t)pix[i]; pix[i] = (pix[i] << 1) ^ (pix[i] >> 31); }
 #define pix_toS fin(3) pix[i] = (pix[i] >> 1) ^ (-(pix[i] & 1));
-#define FILL  if (b->l  < 32) { b->bc <<= 32, b->l += 32; if (b->_p < b->DP) b->bc += *(b->_p)++; }
-#define FLUSH if (b->l >= 32) *(b->_p)++ = b->bc >> (b->l -= 32)
 #define pix_copy(to, from) fin(3) to[i] = from[i];
 #define p1x_(pxsz) p[i - pxsz]
 #define p1x(operator) fin(3) pix[i] = pix[i] operator p1x_(RGB);
@@ -23,6 +30,19 @@
 #define p3a_(pxsz) ((((3 * p[i - pxsz] + 3 * p[i - bpr]) - 2 * p[(i - bpr) - pxsz]) + 2) >> 2)
 #define p3a(operator) fin(3) pix[i] = pix[i] operator p3a_(RGB)
 #define numB(from) nl = from[0] | from[1] | from[2]; nl = numBit(nl);
+
+#define M1ENC_ \
+    pix_toU; numB(pix); F[(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
+    if (nl) { \
+        const int n2 = nl << 1, n3 = n2 + nl; \
+        BITSTREAM_WRITE(k, n3, (pix[0] << n2) | (pix[1] << nl) | pix[2]); \
+        BITSTREAM_FLUSH(k); \
+    } p += RGB;
+#define M1ENC(pr) pix_copy(pix, p); pr(-); M1ENC_
+#define M1ENC4 \
+    pix_copy(pix, p); if (Y) p3a(-); else p2a(-); \
+    if (G) pix[0] -= pix[1], pix[2] -= pix[1]; M1ENC_
+
 #define ENC_ \
     pix_toU; numB(pix); F[0][(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
     switch (nl) { \
@@ -252,39 +272,41 @@ static PTHTF(enc_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
-    u32_t F[9][256]; u8_t *f, *cx[9], *st[9], *xp[19]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
-    fix(1, 19, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : (i < 18 ? 3 : 4));
+    u8_t *f, *cx[9], *xp[12]; MALLOC(xp[0], (u64_t)105e5) ret NULL;
+    fix(1, 12, 1) xp[i] = xp[i - 1] + 500000 * (i < 9 ? 1 : 4);
 
 t:  GET_TASK
     
-    memset(F, 0, 4 * 9 * 256);
-    memcpy(cx, xp, 8 * 9);
-    memcpy(st + 1, xp + 9, 8 * 8); xp[17] = xp[18];
-    bitstream_t b = { ._p = (u32_t *)(xp[18] + 4), .l = 24 };
+    u32_t F[256] = {};
+    memcpy(cx, xp, 8 * 9); xp[9] = xp[10];
+    bitstream_t b = { ._p = (u32_t *)(xp[10] + 4), .l = 24 };
     fin(3) b.bc = (b.bc << 8) + t->p[i];
-    const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
-    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += RGB;
-    const u64_t pr = pp_rgbx(t, bpr, 3); const _Bool Y = pr & 2, G = pr & 1;
+    bitstream_t k = { ._p = (u32_t *)(xp[11] + 4), };
+    const u64_t W = bpr - t->w * RGB; s31_t pix[3], nl; u32_t pl = 0;
+    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB; p += RGB;
+    const u64_t pr = pp_rgbx(t, bpr, RGB); const _Bool Y = pr & 2, G = pr & 1;
     
-    for (; p != L;) { ENC(p1x); } p += W;
-    for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
+    for (; p != L;) { M1ENC(p1x); } p += W;
+    for (; p != P;) { M1ENC(p1y); for (L += bpr; p != L;) { M1ENC4; } p += W; }
     
-    fin(9) encode_stream(F[0] + i * 16, 9, 4, cx + i, cx[i] - xp[i], xp + 17, &b);
-    fix(1, 9, 1) encode_stream(F[i], 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1),
-                               st + i, st[i] - xp[i + 8], xp + 17, &b);
+    fin(9) encode_stream(F + i * 16, 9, 4, cx + i, cx[i] - xp[i], xp + 9, &b);
     
-    if (b.l > 0) *(b._p)++ = b.bc << (32 - b.l);
-    u64_t bsz = *(u32_t *)(xp[18]) = (u8_t *)(b._p) - xp[18], rsz = xp[18] - xp[17], tsz;
+    BITSTREAM_END(b);
+    BITSTREAM_END(k);
+    u64_t bsz = *(u32_t *)(xp[10]) = (u8_t *)(b._p) - xp[10],
+          ksz = *(u32_t *)(xp[11]) = (u8_t *)(k._p) - xp[11],
+          rsz = xp[10] - xp[9], tsz, fsz = rsz + bsz + ksz;
 
-    if (bsz + rsz >= (tsz = t->w * t->h * 3)) {
+    if (fsz >= (tsz = t->w * t->h * RGB)) {
         MALLOC(t->f = f, tsz + 4) goto e; *(u32_t *)f = tsz + 4; f += 4;
-        for (p = t->p; p != P; p += bpr, f += t->w * 3) memcpy(f, p, t->w * 3); goto t;
+        for (p = t->p; p != P; p += bpr, f += t->w * RGB) memcpy(f, p, t->w * RGB); goto t;
     }
     
-    MALLOC(t->f = f, bsz + rsz + 4) goto e; u32_t m = (1 << 26) + (Y << 25) + (G << 24);
-    *(u32_t *)f = (bsz + rsz + 4) + m; f += 4; memcpy(f, xp[18], bsz); f += bsz;
-    fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
-    fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & BITMASK(24)); f += tsz; }
+    MALLOC(t->f = f, fsz + 4) goto e; u32_t m = (1 << 26) + (pr << 24);
+    *(u32_t *)f = (fsz + 4) + m; f += 4;
+    memcpy(f, xp[10], bsz); f += bsz;
+    fin(9) { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
+    memcpy(f, xp[11], ksz);
     
     goto t; e: free(xp[0]); return NULL;
 }
@@ -378,7 +400,7 @@ t:  GET_TASK
         for (p = t->p; p != P; p += bpr, f += t->w * 3) memcpy(f, p, t->w * 3); goto t;
     }
     
-    MALLOC(t->f = f, bsz + rsz + 4) goto e; u32_t m = (1 << 28) + (Y << 25) + (G << 24);
+    MALLOC(t->f = f, bsz + rsz + 4) goto e; u32_t m = (1 << 28) + (pr << 24);
     *(u32_t *)f = (bsz + rsz + 4) + m; f += 4; memcpy(f, xp[18], bsz); f += bsz;
     fin(9)       { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
     fix(1, 9, 1) { memcpy(f, st[i], tsz = *(u32_t *)(st[i]) & BITMASK(24)); f += tsz; }
@@ -514,48 +536,48 @@ static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *
     if (st_size & 1) *x = cum2sym[state0 & BITMASK(PROB_BITS)];
 }
 
-#define DEC_ \
-    nl = *cx[nl]++; \
-    switch (nl) { \
-        case  0: fin(3) pix[i] = 0; break; \
-        case  1: pix[2] = *st[1]++, \
-                 pix[0] = (pix[2] >> 2), pix[1] = (pix[2] >> 1) & 1, pix[2] &= 1; break; \
-        case  2: pix[2] = *st[2]++, \
-                 pix[0] = (pix[2] >> 4), pix[1] = (pix[2] >> 2) & 3, pix[2] &= 3; break; \
-        default: fin(3) pix[i] = *st[nl]++; \
-    } pix_toS;
-#define DEC(pr) DEC_; pr(+); pix_copy(p, pix); p += RGB;
-#define DEC4 DEC_; \
-    if (G) pix[0] += pix[1], pix[2] += pix[1]; if (Y) p3a(+); else p2a(+); \
-    pix_copy(p, pix); p += RGB;
+#define M1DEC_ \
+    if ((nl = *cx[nl]++)) { \
+        BITSTREAM_FILL(k); \
+        const int n2 = nl << 1, n3 = n2 + nl; \
+        pix[2] = BITSTREAM_READ(k, n3); \
+        pix[0] =  pix[2] >> n2, \
+        pix[1] = (pix[2] >> nl) & BITMASK(nl), \
+        pix[2] &= BITMASK(nl); \
+    } else fin(3) pix[i] = 0; pix_toS;
+#define M1DEC(pr) M1DEC_; pr(+); pix_copy(p, pix); p += RGB;
+#define M1DEC4 M1DEC_; if (G) pix[0] += pix[1], pix[2] += pix[1]; \
+                       if (Y) p3a(+); else p2a(+); pix_copy(p, pix); p += RGB;
 
 static PTHTF(dec_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
-    u8_t *cx[9], *st[9], *xp[17]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
-    fix(1, 17, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : 3);
+    u8_t *cx[9], *xp[9]; MALLOC(xp[0], (u64_t)45e5) ret NULL;
+    fix(1, 9, 1) xp[i] = xp[i - 1] + 500000;
     
 t:  GET_TASK
     
-    const u8_t *f = t->f; u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
+    const u8_t *f = t->f;
+    u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
     u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
-    if (!m) { for (; p != P; p += bpr, f += t->w * 3) memcpy(p, f, t->w * 3); goto t; }
+    if (!m) { for (; p != P; p += bpr, f += t->w * RGB) memcpy(p, f, t->w * RGB); goto t; }
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
-    fin(3) t->p[i] = (b.bc >> (b.l -= 8)) & 255;
-    memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8);
+    fin(3) t->p[i] = BITSTREAM_READ(b, 8);
+    memcpy(cx, xp, 8 * 9);
     
     fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
-    fix(1, 9, 1) {
-        decode_stream(f, 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1), st[i], &b);
-        f += *(u32_t *)f & BITMASK(24);
-    }
     
-    s31_t pix[3], nl = 0; const u64_t W = bpr - t->w * 3; p += RGB; _Bool Y = m & 2, G = m & 1;
+    bitstream_t k = { ._p = (u32_t *)(f + 4), .l = 32 };
+    k.DP = (u32_t *)(f + *(u32_t *)f), k.bc = *(k._p)++;
     
-    for (; p != L;) { DEC(p1x); } p += W;
-    for (; p != P;) { DEC(p1y); for (L += bpr; p != L;) { DEC4; } p += W; }
+    s31_t pix[3], nl = 0;
+    const u64_t W = bpr - t->w * RGB; p += RGB;
+    const _Bool Y = m & 2, G = m & 1;
+    
+    for (; p != L;) { M1DEC(p1x); } p += W;
+    for (; p != P;) { M1DEC(p1y); for (L += bpr; p != L;) { M1DEC4; } p += W; }
     
     goto t;  e: free(xp[0]); return NULL;
 }
@@ -595,6 +617,21 @@ static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     } p += W; }
     
 }
+
+#define DEC_ \
+    nl = *cx[nl]++; \
+    switch (nl) { \
+        case  0: fin(3) pix[i] = 0; break; \
+        case  1: pix[2] = *st[1]++, \
+                 pix[0] = (pix[2] >> 2), pix[1] = (pix[2] >> 1) & 1, pix[2] &= 1; break; \
+        case  2: pix[2] = *st[2]++, \
+                 pix[0] = (pix[2] >> 4), pix[1] = (pix[2] >> 2) & 3, pix[2] &= 3; break; \
+        default: fin(3) pix[i] = *st[nl]++; \
+    } pix_toS;
+#define DEC(pr) DEC_; pr(+); pix_copy(p, pix); p += RGB;
+#define DEC4 DEC_; \
+    if (G) pix[0] += pix[1], pix[2] += pix[1]; if (Y) p3a(+); else p2a(+); \
+    pix_copy(p, pix); p += RGB;
 
 static PTHTF(dec_2_th) {
     
