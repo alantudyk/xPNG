@@ -273,7 +273,7 @@ static PTHTF(enc_1_th) {
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
     u8_t *f, *cx[9], *xp[12]; MALLOC(xp[0], (u64_t)105e5) ret NULL;
-    fix(1, 12, 1) xp[i] = xp[i - 1] + 500000 * (i < 9 ? 1 : 4);
+    fix(1, 12, 1) xp[i] = xp[i - 1] + 500000 * (i < 10 ? 1 : 4);
 
 t:  GET_TASK
     
