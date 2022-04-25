@@ -169,9 +169,10 @@ typedef struct Rans64EncSymbol {
     u32_t freq, bias, cmpl_freq, rcp_shift;
 } Rans64EncSymbol;
 
-static void encode_stream(u32_t *F, const u64_t N, const u64_t nBit, u8_t **st,
+static void compress_block(u32_t *F, const u64_t N, u8_t **st,
                           const u64_t st_size, u8_t **_res, bitstream_t *b) {
     
+    const u64_t nBit = numBit((int)(N - 1));
     u32_t s = 0, cum[N + 1], *res = (u32_t *)*_res; cum[0] = 0;
     if (st_size == 0) { *_res = *st = (u8_t *)(--res), *res = 4; return; }
     fin(N) cum[i + 1] = cum[i] + F[i], s += (_Bool)F[i];
@@ -272,13 +273,13 @@ static PTHTF(enc_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
-    u8_t *f, *cx[9], *xp[12]; MALLOC(xp[0], (u64_t)105e5) ret NULL;
-    fix(1, 12, 1) xp[i] = xp[i - 1] + 500000 * (i < 10 ? 1 : 4);
+    u8_t *xp[12]; MALLOC(xp[0], (u64_t)105e5) ret NULL;
+    fix(1, 12, 1) xp[i] = xp[i - 1] + 500000 * (i < 10 ? 1 : 4); xp[9] = xp[10];
 
 t:  GET_TASK
     
     u32_t F[256] = {};
-    memcpy(cx, xp, 8 * 9); xp[9] = xp[10];
+    u8_t *f, *cx[10]; memcpy(cx, xp, 8 * 10);
     bitstream_t b = { ._p = (u32_t *)(xp[10] + 4), .l = 24 };
     fin(3) b.bc = (b.bc << 8) + t->p[i];
     bitstream_t k = { ._p = (u32_t *)(xp[11] + 4), };
@@ -289,13 +290,13 @@ t:  GET_TASK
     for (; p != L;) { M1ENC(p1x); } p += W;
     for (; p != P;) { M1ENC(p1y); for (L += bpr; p != L;) { M1ENC4; } p += W; }
     
-    fin(9) encode_stream(F + i * 16, 9, 4, cx + i, cx[i] - xp[i], xp + 9, &b);
+    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b);
     
     BITSTREAM_END(b);
     BITSTREAM_END(k);
     u64_t bsz = *(u32_t *)(xp[10]) = (u8_t *)(b._p) - xp[10],
           ksz = *(u32_t *)(xp[11]) = (u8_t *)(k._p) - xp[11],
-          rsz = xp[10] - xp[9], tsz, fsz = rsz + bsz + ksz;
+          rsz = xp[9] - cx[9], tsz, fsz = rsz + bsz + ksz;
 
     if (fsz >= (tsz = t->w * t->h * RGB)) {
         MALLOC(t->f = f, tsz + 4) goto e; *(u32_t *)f = tsz + 4; f += 4;
@@ -346,7 +347,7 @@ static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
     size_t bsz = 1e6, rsz = 1e6, tsz, m = 0;
     fin(4) {
-        encode_stream(F[i], 256, 8, st + i, st[i] - xp[0 + i], res + i, b + i);
+        compress_block(F[i], 256, st + i, st[i] - xp[0 + i], res + i, b + i);
         if (b[i].l > 0) *(b[i]._p)++ = b[i].bc << (32 - b[i].l);
         size_t _bsz = *(u32_t *)(xp[15 + i]) = (u8_t *)(b[i]._p) - xp[15 + i], \
                _rsz = xp[5 + i] - res[i];
@@ -388,8 +389,8 @@ t:  GET_TASK
     for (; p != L;) { ENC(p1x); } p += W;
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
     
-    fin(9) encode_stream(F[0] + i * 16, 9, 4, cx + i, cx[i] - xp[i], xp + 17, &b);
-    fix(1, 9, 1) encode_stream(F[i], 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1),
+    fin(9) compress_block(F[0] + i * 16, 9, cx + i, cx[i] - xp[i], xp + 17, &b);
+    fix(1, 9, 1) compress_block(F[i], 1 << i * (i < 3 ? 3 : 1),
                                st + i, st[i] - xp[i + 8], xp + 17, &b);
     
     if (b.l > 0) *(b._p)++ = b.bc << (32 - b.l);
@@ -499,8 +500,9 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
     ret xpng_store_T(T_MAX, mode, pm, filename);
 }
 
-static void decode_stream(const u8_t *f, const u64_t N, const u64_t nBit, u8_t *x, bitstream_t *b) {
+static void decompress_block(const u8_t *f, const u64_t N, u8_t *x, bitstream_t *b) {
     
+    const u64_t nBit = numBit((int)(N - 1));
     const u32_t *res = (u32_t *)f,
     *const R = (u32_t *)(f + (*res & BITMASK(24))), type = *res++ >> 24;
     
@@ -567,7 +569,7 @@ t:  GET_TASK
     fin(3) t->p[i] = BITSTREAM_READ(b, 8);
     memcpy(cx, xp, 8 * 9);
     
-    fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
+    fin(9) { decompress_block(f, 9, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
     
     bitstream_t k = { ._p = (u32_t *)(f + 4), .l = 32 };
     k.DP = (u32_t *)(f + *(u32_t *)f), k.bc = *(k._p)++;
@@ -602,7 +604,7 @@ static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
     p[0] = p[1] = p[2] = (b.bc >> (b.l -= 8)) & 255; p += RGB;
     
-    decode_stream(f, 256, 8, st, &b);
+    decompress_block(f, 256, st, &b);
     
     for (; p != L;) { DEC_GRAY(G_p1x); } p += W;
     for (; p != P;) { DEC_GRAY(G_p1y); for (L += bpr; p != L; p += RGB) {
@@ -651,9 +653,9 @@ t:  GET_TASK
     fin(3) t->p[i] = (b.bc >> (b.l -= 8)) & 255;
     memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8);
     
-    fin(9) { decode_stream(f, 9, 4, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
+    fin(9) { decompress_block(f, 9, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
     fix(1, 9, 1) {
-        decode_stream(f, 1 << i * (i < 3 ? 3 : 1), i * (i < 3 ? 3 : 1), st[i], &b);
+        decompress_block(f, 1 << i * (i < 3 ? 3 : 1), st[i], &b);
         f += *(u32_t *)f & BITMASK(24);
     }
     
