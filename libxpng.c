@@ -160,18 +160,17 @@ typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
 #define GET_TASK PTHSPL(&d->sp); \
     if (d->t == d->t_end) { PTHSPU(&d->sp); goto e; } t = d->t++; PTHSPU(&d->sp);
 
-#define PROB_BITS  14
-#define PROB_SCALE (1UL << PROB_BITS)
-#define RANS64_L   (1UL << 31)
+#define RANS64_L (1UL << 31)
 
 typedef struct Rans64EncSymbol {
     u64_t rcp_freq;
     u32_t freq, bias, cmpl_freq, rcp_shift;
 } Rans64EncSymbol;
 
-static void compress_block(u32_t *F, const u64_t N, u8_t **st,
-                          const u64_t st_size, u8_t **_res, bitstream_t *b) {
+static void compress_block(u32_t *F, const u64_t N, u8_t **st, const u64_t st_size,
+                           u8_t **_res, bitstream_t *b, const int PROB_BITS) {
     
+    const u64_t PROB_SCALE = (1UL << PROB_BITS);
     const u64_t nBit = numBit((int)(N - 1));
     u32_t s = 0, cum[N + 1], *res = (u32_t *)*_res; cum[0] = 0;
     if (st_size == 0) { *_res = *st = (u8_t *)(--res), *res = 4; return; }
@@ -269,6 +268,48 @@ static void compress_block(u32_t *F, const u64_t N, u8_t **st,
     *res = (*_res - (u8_t *)res) + ((3 + compr_tab) << 24), *_res = (u8_t *)res;
 }
 
+static void decompress_block(const u8_t *f, const u64_t N, u8_t *x,
+                             bitstream_t *b, const int PROB_BITS) {
+    
+    const u64_t PROB_SCALE = (1UL << PROB_BITS);
+    const u64_t nBit = numBit((int)(N - 1));
+    const u32_t *res = (u32_t *)f,
+    *const R = (u32_t *)(f + (*res & BITMASK(24))), type = *res++ >> 24;
+    
+    switch (type) {
+        case  1: memset(x, *res >> 24, *res & BITMASK(24)); ret;
+        case  2: fin(*res) { FILL; x[i] = BCF(nBit); } ret;
+        case  3:
+        case  4: break;
+        default: ret;
+    }
+    
+    u32_t st_size = *res++, F[N], cum[N + 1]; cum[0] = 0;
+    if (type == 3) fin(N) { FILL; F[i] = BCF(PROB_BITS); }
+    else fin(N) { FILL; if ((F[i] = BCF(1))) F[i] = BCF(PROB_BITS); }
+    fin(N) cum[i + 1] = cum[i] + F[i];
+    u8_t cum2sym[PROB_SCALE]; fin(N) memset(cum2sym + cum[i], i, F[i]);
+    
+    if (res + 4 > R) ret; u64_t state0 = *(u64_t *)res, state1 = *(u64_t *)(res + 2); res += 4;
+    
+    for (u8_t *const X = x + (st_size & ~1u); x < X; x += 2) {
+        
+        x[0] = cum2sym[state0 & BITMASK(PROB_BITS)];
+        x[1] = cum2sym[state1 & BITMASK(PROB_BITS)];
+    
+        state0 = (F[x[0]] * (state0 >> PROB_BITS) + (state0 & BITMASK(PROB_BITS))) - cum[x[0]];
+        state1 = (F[x[1]] * (state1 >> PROB_BITS) + (state1 & BITMASK(PROB_BITS))) - cum[x[1]];
+    
+        if (state0 < RANS64_L) { state0 = (state0 << 32) | *res; if (res < R) res++; }
+        if (state1 < RANS64_L) { state1 = (state1 << 32) | *res; if (res < R) res++; }
+        
+    }
+    
+    if (st_size & 1) *x = cum2sym[state0 & BITMASK(PROB_BITS)];
+}
+
+#undef RANS64_L
+
 static PTHTF(enc_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
@@ -290,7 +331,7 @@ t:  GET_TASK
     for (; p != L;) { M1ENC(p1x); } p += W;
     for (; p != P;) { M1ENC(p1y); for (L += bpr; p != L;) { M1ENC4; } p += W; }
     
-    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b);
+    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
     
     BITSTREAM_END(b);
     BITSTREAM_END(k);
@@ -347,7 +388,7 @@ static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
     size_t bsz = 1e6, rsz = 1e6, tsz, m = 0;
     fin(4) {
-        compress_block(F[i], 256, st + i, st[i] - xp[0 + i], res + i, b + i);
+        compress_block(F[i], 256, st + i, st[i] - xp[0 + i], res + i, b + i, 15);
         if (b[i].l > 0) *(b[i]._p)++ = b[i].bc << (32 - b[i].l);
         size_t _bsz = *(u32_t *)(xp[15 + i]) = (u8_t *)(b[i]._p) - xp[15 + i], \
                _rsz = xp[5 + i] - res[i];
@@ -389,9 +430,9 @@ t:  GET_TASK
     for (; p != L;) { ENC(p1x); } p += W;
     for (; p != P;) { ENC(p1y); for (L += bpr; p != L;) { ENC4; } p += W; }
     
-    fin(9) compress_block(F[0] + i * 16, 9, cx + i, cx[i] - xp[i], xp + 17, &b);
+    fin(9) compress_block(F[0] + i * 16, 9, cx + i, cx[i] - xp[i], xp + 17, &b, 14);
     fix(1, 9, 1) compress_block(F[i], 1 << i * (i < 3 ? 3 : 1),
-                               st + i, st[i] - xp[i + 8], xp + 17, &b);
+                               st + i, st[i] - xp[i + 8], xp + 17, &b, 14);
     
     if (b.l > 0) *(b._p)++ = b.bc << (32 - b.l);
     u64_t bsz = *(u32_t *)(xp[18]) = (u8_t *)(b._p) - xp[18], rsz = xp[18] - xp[17], tsz;
@@ -500,44 +541,6 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
     ret xpng_store_T(T_MAX, mode, pm, filename);
 }
 
-static void decompress_block(const u8_t *f, const u64_t N, u8_t *x, bitstream_t *b) {
-    
-    const u64_t nBit = numBit((int)(N - 1));
-    const u32_t *res = (u32_t *)f,
-    *const R = (u32_t *)(f + (*res & BITMASK(24))), type = *res++ >> 24;
-    
-    switch (type) {
-        case  1: memset(x, *res >> 24, *res & BITMASK(24)); ret;
-        case  2: fin(*res) { FILL; x[i] = BCF(nBit); } ret;
-        case  3:
-        case  4: break;
-        default: ret;
-    }
-    
-    u32_t st_size = *res++, F[N], cum[N + 1]; cum[0] = 0;
-    if (type == 3) fin(N) { FILL; F[i] = BCF(PROB_BITS); }
-    else fin(N) { FILL; if ((F[i] = BCF(1))) F[i] = BCF(PROB_BITS); }
-    fin(N) cum[i + 1] = cum[i] + F[i];
-    u8_t cum2sym[PROB_SCALE]; fin(N) memset(cum2sym + cum[i], i, F[i]);
-    
-    if (res + 4 > R) ret; u64_t state0 = *(u64_t *)res, state1 = *(u64_t *)(res + 2); res += 4;
-    
-    for (u8_t *const X = x + (st_size & ~1u); x < X; x += 2) {
-        
-        x[0] = cum2sym[state0 & BITMASK(PROB_BITS)];
-        x[1] = cum2sym[state1 & BITMASK(PROB_BITS)];
-    
-        state0 = (F[x[0]] * (state0 >> PROB_BITS) + (state0 & BITMASK(PROB_BITS))) - cum[x[0]];
-        state1 = (F[x[1]] * (state1 >> PROB_BITS) + (state1 & BITMASK(PROB_BITS))) - cum[x[1]];
-    
-        if (state0 < RANS64_L) { state0 = (state0 << 32) | *res; if (res < R) res++; }
-        if (state1 < RANS64_L) { state1 = (state1 << 32) | *res; if (res < R) res++; }
-        
-    }
-    
-    if (st_size & 1) *x = cum2sym[state0 & BITMASK(PROB_BITS)];
-}
-
 #define M1DEC_ \
     if ((nl = *cx[nl]++)) { \
         BITSTREAM_FILL(k); \
@@ -569,7 +572,7 @@ t:  GET_TASK
     fin(3) t->p[i] = BITSTREAM_READ(b, 8);
     memcpy(cx, xp, 8 * 9);
     
-    fin(9) { decompress_block(f, 9, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
+    fin(9) { decompress_block(f, 9, cx[i], &b, 14); f += *(u32_t *)f & BITMASK(24); }
     
     bitstream_t k = { ._p = (u32_t *)(f + 4), .l = 32 };
     k.DP = (u32_t *)(f + *(u32_t *)f), k.bc = *(k._p)++;
@@ -604,7 +607,7 @@ static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
     p[0] = p[1] = p[2] = (b.bc >> (b.l -= 8)) & 255; p += RGB;
     
-    decompress_block(f, 256, st, &b);
+    decompress_block(f, 256, st, &b, 15);
     
     for (; p != L;) { DEC_GRAY(G_p1x); } p += W;
     for (; p != P;) { DEC_GRAY(G_p1y); for (L += bpr; p != L; p += RGB) {
@@ -653,9 +656,9 @@ t:  GET_TASK
     fin(3) t->p[i] = (b.bc >> (b.l -= 8)) & 255;
     memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8);
     
-    fin(9) { decompress_block(f, 9, cx[i], &b); f += *(u32_t *)f & BITMASK(24); }
+    fin(9) { decompress_block(f, 9, cx[i], &b, 14); f += *(u32_t *)f & BITMASK(24); }
     fix(1, 9, 1) {
-        decompress_block(f, 1 << i * (i < 3 ? 3 : 1), st[i], &b);
+        decompress_block(f, 1 << i * (i < 3 ? 3 : 1), st[i], &b, 14);
         f += *(u32_t *)f & BITMASK(24);
     }
     
