@@ -492,7 +492,7 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
 
     TIME_PAIR; TIME_GET_START;
     
-    if (pm_->w > (1 << 24) || !pm_->w || mode > 2 ||
+    if (pm_->w > (1 << 24) || !pm_->w || !(mode == 1 || mode == 2 || mode == 7) ||
         pm_->h > (1 << 24) || !pm_->h || pm_->w * pm_->h * (3 + pm_->A) != pm_->s ||
         pm_->p == NULL) ret 1;
     
@@ -503,7 +503,7 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     FILE *of = fopen(fn, "wb");
     if (of == NULL || fwrite(h, 1, 8, of) != 8) ret 1;
     
-    if (mode == 0) ret fwrite(pm->p, 1, pm->s, of) != pm->s || fclose(of);
+    if (mode == 7) ret fwrite(pm->p, 1, pm->s, of) != pm->s || fclose(of);
     
     N_INIT; if (spawn_and_wait(T, &d, 0, (void* []){ NULL, enc_1_th, enc_2_th }[mode])) ret 1;
     
@@ -519,7 +519,7 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     }
     
     if (x >= pm->s) {
-        h[0] &= BITMASK(24);
+        ((u8_t *)h)[3] = XPNG_COMPRESSION_TYPE_UNCOMPRESSED;
         if (fclose(of)
             || (of = fopen(fn, "wb")) == NULL
             || fwrite(h, 1, 8, of) != 8
@@ -676,10 +676,12 @@ _Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
 
     reg_t r; F_READ(xpng, &r) ret 1; TIME_PAIR; TIME_GET_START;
     
-    u64_t x = 8, mode; const u32_t *h = (const u32_t *)(r.p);
+    u64_t x = 8; const u32_t *h = (const u32_t *)(r.p);
     pm->w = (h[0] & BITMASK(24)) + 1, pm->h = (h[1] & BITMASK(24)) + 1, pm->A = (h[1] >> 24) & 1;
-    if ((mode = h[0] >> 24) > 2) ret 1; pm->s = 3 * pm->w * pm->h;
-    MALLOC(pm->p, pm->s) ret 1; if (!mode) ret !memcpy(pm->p, r.p + 8, pm->s);
+    const u64_t mode = h[0] >> 24;
+    if (!(mode == 1 || mode == 2 || mode == 7)) ret 1;
+    pm->s = 3 * pm->w * pm->h;
+    MALLOC(pm->p, pm->s) ret 1; if (mode == 7) ret !memcpy(pm->p, r.p + 8, pm->s);
     N_INIT; fin(N) t[i].f = r.p + x, x += *(u32_t *)t[i].f & BITMASK(24);
     if (spawn_and_wait(T, &d, 0, (void* []){ NULL, dec_1_th, dec_2_th }[mode])) ret 1;
     
