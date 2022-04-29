@@ -6,6 +6,7 @@
 #endif
 
 #include <pthread.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -47,6 +48,8 @@ _Bool f_write(const char *fn, const reg_t *f);
 
 #define pf printf
 #define ret return
+#define not !
+#define unless(CND) if (not (CND))
 #define BITMASK_SHL(n, shl) (((1LU << (n)) - 1) << (shl))
 #define BITMASK(n) BITMASK_SHL(n, 0)
 

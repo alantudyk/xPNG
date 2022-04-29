@@ -679,7 +679,7 @@ _Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
     u64_t x = 8; const u32_t *h = (const u32_t *)(r.p);
     pm->w = (h[0] & BITMASK(24)) + 1, pm->h = (h[1] & BITMASK(24)) + 1, pm->A = (h[1] >> 24) & 1;
     const u64_t mode = h[0] >> 24;
-    if (!(mode == 1 || mode == 2 || mode == 7)) ret 1;
+    unless (mode == 1 || mode == 2 || mode == 7) ret 1;
     pm->s = 3 * pm->w * pm->h;
     MALLOC(pm->p, pm->s) ret 1; if (mode == 7) ret !memcpy(pm->p, r.p + 8, pm->s);
     N_INIT; fin(N) t[i].f = r.p + x, x += *(u32_t *)t[i].f & BITMASK(24);
