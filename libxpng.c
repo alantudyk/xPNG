@@ -1,8 +1,6 @@
 #include "xpng.h"
 
-#if T_MAX < 1
-#error
-#endif
+_Static_assert(T_MAX >= 0);
 
 #define RGB  3
 #define RGBA 4
@@ -95,13 +93,15 @@ static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
 }
 
 #define STEP 4
+_Static_assert(STEP >= 2);
+
 #define PP_RGBX(s) \
     fin(3) { pix##s[i] = (s7_t)pix##s[i]; pix##s[i] = (pix##s[i] << 1) ^ (pix##s[i] >> 31); } \
     n##s = pix##s[0] | pix##s[1] | pix##s[2]; F##s += numBit(n##s);
+    
 __attribute__ ((noinline))
 static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
     
-    if (STEP < 2) exit(1);
     if (t->w < STEP || t->h < STEP) ret 0;
     
     u32_t F1 = 0, F2 = 0, F3 = 0, F4 = 0;
@@ -155,7 +155,7 @@ static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
 
 typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
 #define N_INIT u64_t N; task_t *t = compute_props_of_each_tile(&N, pm); \
-    if (t == NULL) ret 1; if (T < 1 || T > 256) T = T_MAX; if (N < T) T = N; \
+    if (t == NULL) ret 1; if (T == 0) T = sysconf(_SC_NPROCESSORS_ONLN); if (N < T) T = N; \
     data_t d = { .t = t, .t_end = t + N, .bpr = (RGB + pm->A) * pm->w }; PTHSPI(&d.sp);
 #define GET_TASK PTHSPL(&d->sp); \
     if (d->t == d->t_end) { PTHSPU(&d->sp); goto e; } t = d->t++; PTHSPU(&d->sp);
