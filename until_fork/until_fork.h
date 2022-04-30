@@ -1,9 +1,7 @@
 #ifndef ___UNTIL_FORK_H
 #define ___UNTIL_FORK_H
 
-#if __SIZEOF_POINTER__ != 8
-#error
-#endif
+_Static_assert(__SIZEOF_POINTER__ == 8);
 
 #include <pthread.h>
 #include <stdbool.h>
