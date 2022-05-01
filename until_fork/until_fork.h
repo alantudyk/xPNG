@@ -1,7 +1,9 @@
 #ifndef ___UNTIL_FORK_H
 #define ___UNTIL_FORK_H
 
-_Static_assert(__SIZEOF_POINTER__ == 8);
+#define static_assert(CND) _Static_assert(CND, "");
+
+static_assert(__SIZEOF_POINTER__ == 8);
 
 #include <pthread.h>
 #include <stdbool.h>
@@ -46,8 +48,9 @@ _Bool f_write(const char *fn, const reg_t *f);
 
 #define pf printf
 #define ret return
-#define not !
-#define unless(CND) if (not (CND))
+#define nil NULL
+#define not(CND) !(CND)
+#define unless(CND) if (not(CND))
 #define BITMASK_SHL(n, shl) (((1LU << (n)) - 1) << (shl))
 #define BITMASK(n) BITMASK_SHL(n, 0)
 

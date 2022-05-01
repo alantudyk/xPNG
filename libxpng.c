@@ -1,6 +1,6 @@
 #include "xpng.h"
 
-_Static_assert(T_MAX >= 0);
+static_assert(T_MAX >= 0);
 
 #define RGB  3
 #define RGBA 4
@@ -93,7 +93,7 @@ static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
 }
 
 #define STEP 4
-_Static_assert(STEP >= 2);
+static_assert(STEP >= 2);
 
 #define PP_RGBX(s) \
     fin(3) { pix##s[i] = (s7_t)pix##s[i]; pix##s[i] = (pix##s[i] << 1) ^ (pix##s[i] >> 31); } \
