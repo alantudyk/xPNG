@@ -10,7 +10,6 @@ MAIN_ARGS {
         case '1':
         case '2':
         case '7': ret (int)(load_7(argv[2], &pm) || xpng_store(argv[1][1] - '0', &pm, argv[3]));
-        
         case '3': ret (int)xpng_from_jpg(argv[2], argv[3]);
         case 'd': ret (int)(xpng_load(argv[2], &pm) || store_7(&pm, argv[3]));
         
