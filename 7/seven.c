@@ -64,12 +64,9 @@ MAIN_ARGS {
     
 d:  if (load_7(argv[2], &pm)) ret 1;
     
-    img = (png_image){
-        .version = PNG_IMAGE_VERSION,
-        .width   = pm.w,
-        .height  = pm.h,
-        .format  = pm.A ? PNG_FORMAT_RGBA : PNG_FORMAT_RGB
-    };
+    img.width  = pm.w,
+    img.height = pm.h,
+    img.format = pm.A ? PNG_FORMAT_RGBA : PNG_FORMAT_RGB;
     
     png_image_write_to_file(&img, argv[3], 0, pm.p, 0, nil);
     

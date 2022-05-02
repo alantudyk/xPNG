@@ -498,6 +498,7 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     
     const xpng_t pmv = *pm_, *const pm = &pmv;
     if (normalize_RGBA((xpng_t *)pm)) ret 1;
+    if (pm->A) ret 1;
     
     u32_t h[2] = { (pm->w - 1) | (mode << 24), (pm->h - 1) | (pm->A << 24) };
     FILE *of = fopen(fn, "wb");
