@@ -2,13 +2,11 @@
 
 system('./build.sh && cd 7 && ./build.sh && cd ..') || exit(1)
 
-OK     = -> do ["\x1b[32mOK\x1b[m", File.size('/tmp/res.xpng')] end
-Failed = -> do ["\x1b[31mFailed\x1b[m", 'n/a'] end
-
 Print_Result = -> o, success do
 
     fmt =  "\t\toption '-#{o}': %28s\n\t\tcompressed size: %16s\n\n"
-    puts fmt % (success ? OK : Failed).call
+    puts fmt % (success ? ["\x1b[32mOK\x1b[m", File.size('/tmp/res.xpng')] :
+                          ["\x1b[31mFailed\x1b[m", 'n/a'])
     
 end
 
@@ -19,12 +17,12 @@ puts
 
 Dir.entries(p).sort.each do | f |
     
-    f[/\.(pn|jp)g$/] ? puts("\n\tFile '#{f}':\n\n") : next
+    f[/.+\.(pn|jp)g$/] ? puts("\n\tFile '#{f}':\n\n") : next
     
     if f[-2] == ?n
         
         system("7/seven --to_7 #{p + f} /tmp/src.7") ||
-            (puts "convertion to *.7 failed\n\n"; next)
+            (puts "\t\t\x1b[31mconversion to *.7 failed\x1b[m\n\n"; next)
         
         (1..2).each do | o |
             
