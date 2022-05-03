@@ -2,9 +2,8 @@
 
 system('./build.sh && cd 7 && ./build.sh && cd ..') || exit(1)
 
-Print_Name = -> f do puts "\n\tFile '#{f}':\n\n" end
-OK         = -> do ["\x1b[32mOK\x1b[m", File.size('/tmp/res.xpng')] end
-Failed     = -> do ["\x1b[31mFailed\x1b[m", 'n/a'] end
+OK     = -> do ["\x1b[32mOK\x1b[m", File.size('/tmp/res.xpng')] end
+Failed = -> do ["\x1b[31mFailed\x1b[m", 'n/a'] end
 
 Print_Result = -> o, success do
 
@@ -20,7 +19,7 @@ puts
 
 Dir.entries(p).sort.each do | f |
     
-    f[/\.(pn|jp)g$/] ? Print_Name.(f) : next
+    f[/\.(pn|jp)g$/] ? puts("\n\tFile '#{f}':\n\n") : next
     
     if f[-2] == ?n
         
@@ -39,7 +38,7 @@ Dir.entries(p).sort.each do | f |
         
     else
         
-        Print_Result.call 3, system("./xpng -3 #{f} /tmp/res.xpng > /dev/null")
+        Print_Result.call 3, system("./xpng -3 #{p + f} /tmp/res.xpng > /dev/null")
         
     end
     
