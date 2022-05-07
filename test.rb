@@ -36,7 +36,7 @@ Dir.entries(p).sort.each do | f |
         
     else
         
-        Print_Result.call 3, system("./xpng -3 #{p + f} /tmp/res.xpng > /dev/null")
+        Print_Result.call 3, system("./xpng -3 '#{p + f}' /tmp/res.xpng > /dev/null")
         
     end
     

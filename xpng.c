@@ -2,8 +2,7 @@
 
 MAIN_ARGS {
     
-    if (argc != 4 || argv[1][0] != '-' || strlen(argv[1]) != 2) goto h;
-    xpng_t pm; reg_t r;
+    if (argc != 4 || argv[1][0] != '-' || strlen(argv[1]) != 2) goto h; xpng_t pm;
     
     switch (argv[1][1]) {
     
