@@ -314,16 +314,16 @@ static PTHTF(enc_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
-    u8_t *xp[12]; MALLOC(xp[0], (u64_t)105e5) ret NULL;
-    fix(1, 12, 1) xp[i] = xp[i - 1] + 500000 * (i < 10 ? 1 : 4); xp[9] = xp[10];
+    u8_t *xp[11]; MALLOC(xp[0], 85e5) ret NULL;
+    fix(1, 9, 1) xp[i] = xp[i - 1] + 500000; xp[9] = xp[10] = xp[0] + (u64_t)65e5;
 
 t:  GET_TASK
     
-    u32_t F[256] = {};
-    u8_t *f, *cx[10]; memcpy(cx, xp, 8 * 10);
-    bitstream_t b = { ._p = (u32_t *)(xp[10] + 4), .l = 24 };
-    fin(3) b.bc = (b.bc << 8) + t->p[i];
-    bitstream_t k = { ._p = (u32_t *)(xp[11] + 4), };
+    u32_t F[256] = {}; u8_t *f, *cx[10];
+    memcpy(cx, xp, 8 * 10); MALLOC(t->f = f, 3e6) goto e;
+    bitstream_t k = { ._p = (u32_t *)(f + 8) };
+    fin(3) BITSTREAM_WRITE(k, 8, t->p[i]);
+    bitstream_t b = { ._p = (u32_t *)(xp[10] + 4) };
     const u64_t W = bpr - t->w * RGB; s31_t pix[3], nl; u32_t pl = 0;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB; p += RGB;
     const u64_t pr = pp_rgbx(t, bpr, RGB); const _Bool Y = pr & 2, G = pr & 1;
@@ -333,22 +333,21 @@ t:  GET_TASK
     
     fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
     
-    BITSTREAM_END(b);
     BITSTREAM_END(k);
-    u64_t bsz = *(u32_t *)(xp[10]) = (u8_t *)(b._p) - xp[10],
-          ksz = *(u32_t *)(xp[11]) = (u8_t *)(k._p) - xp[11],
+    BITSTREAM_END(b);
+    u64_t ksz = *(u32_t *)(f + 4)  = (u8_t *)(k._p) - (f + 4),
+          bsz = *(u32_t *)(xp[10]) = (u8_t *)(b._p) - xp[10],
           rsz = xp[9] - cx[9], tsz, fsz = rsz + bsz + ksz;
 
     if (fsz >= (tsz = t->w * t->h * RGB)) {
-        MALLOC(t->f = f, tsz + 4) goto e; *(u32_t *)f = tsz + 4; f += 4;
+        f = realloc(f, tsz + 4); *(u32_t *)f = tsz + 4; f += 4;
         for (p = t->p; p != P; p += bpr, f += t->w * RGB) memcpy(f, p, t->w * RGB); goto t;
     }
     
-    MALLOC(t->f = f, fsz + 4) goto e; u32_t m = (1 << 26) + (pr << 24);
-    *(u32_t *)f = (fsz + 4) + m; f += 4;
+    f = realloc(f, fsz + 4); u32_t m = (1 << 26) + (pr << 24);
+    *(u32_t *)f = (fsz + 4) + m; f += 4 + ksz;
     memcpy(f, xp[10], bsz); f += bsz;
     fin(9) { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
-    memcpy(f, xp[11], ksz);
     
     goto t; e: free(xp[0]); return NULL;
 }
@@ -567,16 +566,17 @@ t:  GET_TASK
     const u8_t *f = t->f;
     u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
     u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
+    
     if (!m) { for (; p != P; p += bpr, f += t->w * RGB) memcpy(p, f, t->w * RGB); goto t; }
+    
+    bitstream_t k = { ._p = (u32_t *)(f + 4), .l = 32 };
+    k.DP = (u32_t *)(f += *(u32_t *)f), k.bc = *(k._p)++;
+    fin(3) t->p[i] = BITSTREAM_READ(k, 8);
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
-    fin(3) t->p[i] = BITSTREAM_READ(b, 8);
     memcpy(cx, xp, 8 * 9);
     
     fin(9) { decompress_block(f, 9, cx[i], &b, 14); f += *(u32_t *)f & BITMASK(24); }
-    
-    bitstream_t k = { ._p = (u32_t *)(f + 4), .l = 32 };
-    k.DP = (u32_t *)(f + *(u32_t *)f), k.bc = *(k._p)++;
     
     s31_t pix[3], nl = 0;
     const u64_t W = bpr - t->w * RGB; p += RGB;
