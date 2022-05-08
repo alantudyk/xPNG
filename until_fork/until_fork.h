@@ -35,6 +35,8 @@ typedef int64_t s63_t; typedef uint64_t u64_t;
 
 typedef struct reg_t { u8_t *p; u64_t s; } reg_t;
 
+#define CHECK __attribute__((warn_unused_result))
+
 _Bool  f_size(const char *fn,       u64_t *s);
 _Bool  f_read(const char *fn,       reg_t *f);
 _Bool f_write(const char *fn, const reg_t *f);
