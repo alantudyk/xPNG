@@ -342,14 +342,7 @@ t:  GET_TASK
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB; p += RGB;
     const u64_t pr = pp_rgbx(t, bpr, RGB);
     
-    switch(pr) {
-        
-        case 0: m1e_300(F, &k, cx, bpr, W, p, P, L); break;
-        case 1: m1e_301(F, &k, cx, bpr, W, p, P, L); break;
-        case 2: m1e_310(F, &k, cx, bpr, W, p, P, L); break;
-        case 3: m1e_311(F, &k, cx, bpr, W, p, P, L);
-        
-    }
+    (typeof(m1e_300)* []){ m1e_300, m1e_301, m1e_310, m1e_311 }[pr](F, &k, cx, bpr, W, p, P, L);
     
     fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
     
