@@ -29,18 +29,6 @@ static_assert(T_MAX >= 0);
 #define p3a(operator) fin(3) pix[i] = pix[i] operator p3a_(RGB)
 #define numB(from) nl = from[0] | from[1] | from[2]; nl = numBit(nl);
 
-#define M1ENC_ \
-    pix_toU; numB(pix); F[(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
-    if (nl) { \
-        const int n2 = nl << 1, n3 = n2 + nl; \
-        BITSTREAM_WRITE(k, n3, (pix[0] << n2) | (pix[1] << nl) | pix[2]); \
-        BITSTREAM_FLUSH(k); \
-    } p += RGB;
-#define M1ENC(pr) pix_copy(pix, p); pr(-); M1ENC_
-#define M1ENC4 \
-    pix_copy(pix, p); if (Y) p3a(-); else p2a(-); \
-    if (G) pix[0] -= pix[1], pix[2] -= pix[1]; M1ENC_
-
 #define ENC_ \
     pix_toU; numB(pix); F[0][(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
     switch (nl) { \
@@ -99,8 +87,7 @@ static_assert(STEP >= 2);
     fin(3) { pix##s[i] = (s7_t)pix##s[i]; pix##s[i] = (pix##s[i] << 1) ^ (pix##s[i] >> 31); } \
     n##s = pix##s[0] | pix##s[1] | pix##s[2]; F##s += numBit(n##s);
     
-__attribute__ ((noinline))
-static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
+NOINLINE static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ) {
     
     if (t->w < STEP || t->h < STEP) ret 0;
     
@@ -310,6 +297,33 @@ static void decompress_block(const u8_t *f, const u64_t N, u8_t *x,
 
 #undef RANS64_L
 
+#define M1ENC_ \
+    pix_toU; numB(pix); F[(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
+    if (nl) { \
+        const int n2 = nl << 1, n3 = n2 + nl; \
+        BITSTREAM_WRITE(k, n3, (pix[0] << n2) | (pix[1] << nl) | pix[2]); \
+        BITSTREAM_FLUSH(k); \
+    } p += RGB;
+#define M1ENC(pr) pix_copy(pix, p); pr(-); M1ENC_
+#define M1ENC4(Y, G) \
+    pix_copy(pix, p); if (Y) p3a(-); else p2a(-); \
+    if (G) pix[0] -= pix[1], pix[2] -= pix[1]; M1ENC_
+#define M1E3(func_name, Y, G) \
+NOINLINE static void func_name(u32_t *const F, bitstream_t *_k, u8_t **const cx, \
+        const s63_t bpr, const u64_t W, const u8_t *p, const u8_t *const P, const u8_t *L) { \
+    bitstream_t k = *_k; s31_t pix[3], nl; u32_t pl = 0; \
+    for (; p != L;) { M1ENC(p1x); } p += W; \
+    for (; p != P;) { M1ENC(p1y); for (L += bpr; p != L;) { M1ENC4(Y, G); } p += W; } \
+    *_k = k; \
+}
+
+M1E3(m1e_300, 0, 0)
+M1E3(m1e_301, 0, 1)
+M1E3(m1e_310, 1, 0)
+M1E3(m1e_311, 1, 1)
+
+#undef M1E3
+
 static PTHTF(enc_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
@@ -326,10 +340,16 @@ t:  GET_TASK
     bitstream_t b = { ._p = (u32_t *)(xp[10] + 4) };
     const u64_t W = bpr - t->w * RGB; s31_t pix[3], nl; u32_t pl = 0;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB; p += RGB;
-    const u64_t pr = pp_rgbx(t, bpr, RGB); const _Bool Y = pr & 2, G = pr & 1;
+    const u64_t pr = pp_rgbx(t, bpr, RGB);
     
-    for (; p != L;) { M1ENC(p1x); } p += W;
-    for (; p != P;) { M1ENC(p1y); for (L += bpr; p != L;) { M1ENC4; } p += W; }
+    switch(pr) {
+        
+        case 0: m1e_300(F, &k, cx, bpr, W, p, P, L); break;
+        case 1: m1e_301(F, &k, cx, bpr, W, p, P, L); break;
+        case 2: m1e_310(F, &k, cx, bpr, W, p, P, L); break;
+        case 3: m1e_311(F, &k, cx, bpr, W, p, P, L);
+        
+    }
     
     fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
     
