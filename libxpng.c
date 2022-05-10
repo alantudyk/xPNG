@@ -335,23 +335,22 @@ t:  GET_TASK
     
     u32_t F[256] = {}; u8_t *f, *cx[10];
     memcpy(cx, xp, 8 * 10); MALLOC(t->f = f, 3e6) goto e;
-    bitstream_t k = { ._p = (u32_t *)(f + 8) };
-    fin(3) BITSTREAM_WRITE(k, 8, t->p[i]);
-    bitstream_t b = { ._p = (u32_t *)(xp[10] + 4) };
-    const u64_t W = bpr - t->w * RGB; s31_t pix[3], nl; u32_t pl = 0;
+    bitstream_t k = { ._p = (u32_t *)(f + 8) }; fin(3) BITSTREAM_WRITE(k, 8, t->p[i]);
+    bitstream_t b = { ._p = (u32_t *)(xp[10] + 4) }; const u64_t W = bpr - t->w * RGB;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB; p += RGB;
     const u64_t pr = pp_rgbx(t, bpr, RGB);
     
     (typeof(m1e_300)* []){ m1e_300, m1e_301, m1e_310, m1e_311 }[pr](F, &k, cx, bpr, W, p, P, L);
     
-    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
-    
     BITSTREAM_END(k);
+    
+    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
     BITSTREAM_END(b);
+    
     u64_t ksz = *(u32_t *)(f + 4)  = (u8_t *)(k._p) - (f + 4),
           bsz = *(u32_t *)(xp[10]) = (u8_t *)(b._p) - xp[10],
           rsz = xp[9] - cx[9], tsz, fsz = rsz + bsz + ksz;
-
+    
     if (fsz >= (tsz = t->w * t->h * RGB)) {
         t->f = f = realloc(f, tsz + 4); *(u32_t *)f = tsz + 4; f += 4;
         for (p = t->p; p != P; p += bpr, f += t->w * RGB) memcpy(f, p, t->w * RGB); goto t;
