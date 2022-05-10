@@ -353,11 +353,11 @@ t:  GET_TASK
           rsz = xp[9] - cx[9], tsz, fsz = rsz + bsz + ksz;
 
     if (fsz >= (tsz = t->w * t->h * RGB)) {
-        f = realloc(f, tsz + 4); *(u32_t *)f = tsz + 4; f += 4;
+        t->f = f = realloc(f, tsz + 4); *(u32_t *)f = tsz + 4; f += 4;
         for (p = t->p; p != P; p += bpr, f += t->w * RGB) memcpy(f, p, t->w * RGB); goto t;
     }
     
-    f = realloc(f, fsz + 4); u32_t m = (1 << 26) + (pr << 24);
+    t->f = f = realloc(f, fsz + 4); u32_t m = (1 << 26) + (pr << 24);
     *(u32_t *)f = (fsz + 4) + m; f += 4 + ksz;
     memcpy(f, xp[10], bsz); f += bsz;
     fin(9) { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
