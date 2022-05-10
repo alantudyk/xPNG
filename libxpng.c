@@ -328,38 +328,35 @@ static PTHTF(enc_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
-    u8_t *xp[11]; MALLOC(xp[0], 85e5) ret NULL;
-    fix(1, 9, 1) xp[i] = xp[i - 1] + 500000; xp[9] = xp[10] = xp[0] + (u64_t)65e5;
+    u8_t *xp[10]; MALLOC(xp[0], 65e5) ret NULL;
+    fix(1, 9, 1) xp[i] = xp[i - 1] + 500000; xp[9] = xp[0] + (u64_t)65e5;
 
 t:  GET_TASK
     
     u32_t F[256] = {}; u8_t *f, *cx[10];
     memcpy(cx, xp, 8 * 10); MALLOC(t->f = f, 3e6) goto e;
+    
     bitstream_t k = { ._p = (u32_t *)(f + 8) }; fin(3) BITSTREAM_WRITE(k, 8, t->p[i]);
-    bitstream_t b = { ._p = (u32_t *)(xp[10] + 4) }; const u64_t W = bpr - t->w * RGB;
     const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * RGB; p += RGB;
-    const u64_t pr = pp_rgbx(t, bpr, RGB);
+    const u64_t W = bpr - t->w * RGB, pr = pp_rgbx(t, bpr, RGB);
     
     (typeof(m1e_300)* []){ m1e_300, m1e_301, m1e_310, m1e_311 }[pr](F, &k, cx, bpr, W, p, P, L);
     
-    BITSTREAM_END(k);
+    BITSTREAM_END(k); u64_t sz = *(u32_t *)(f + 4)  = (u8_t *)(k._p) - (f + 4); f += 4 + sz;
     
+    bitstream_t b = { ._p = (u32_t *)(f + 4) };
     fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
-    BITSTREAM_END(b);
+    BITSTREAM_END(b); sz = *(u32_t *)(f) = (u8_t *)(b._p) - (f); f += sz;
+    fin(9) { memcpy(f, cx[i], sz = *(u32_t *)(cx[i]) & BITMASK(24)); f += sz; }
     
-    u64_t ksz = *(u32_t *)(f + 4)  = (u8_t *)(k._p) - (f + 4),
-          bsz = *(u32_t *)(xp[10]) = (u8_t *)(b._p) - xp[10],
-          rsz = xp[9] - cx[9], tsz, fsz = rsz + bsz + ksz;
+    u64_t tsz = t->w * t->h * RGB + 4, fsz = f - t->f;
     
-    if (fsz >= (tsz = t->w * t->h * RGB)) {
-        t->f = f = realloc(f, tsz + 4); *(u32_t *)f = tsz + 4; f += 4;
-        for (p = t->p; p != P; p += bpr, f += t->w * RGB) memcpy(f, p, t->w * RGB); goto t;
+    if (fsz < tsz)
+        t->f = f = realloc(t->f, fsz), *(u32_t *)f = (1 << 26) + (pr << 24) + fsz;
+    else {
+        t->f = f = realloc(t->f, tsz); *(u32_t *)f = tsz; f += 4;
+        for (p = t->p; p != P; p += bpr, f += t->w * RGB) memcpy(f, p, t->w * RGB);
     }
-    
-    t->f = f = realloc(f, fsz + 4); u32_t m = (1 << 26) + (pr << 24);
-    *(u32_t *)f = (fsz + 4) + m; f += 4 + ksz;
-    memcpy(f, xp[10], bsz); f += bsz;
-    fin(9) { memcpy(f, cx[i], tsz = *(u32_t *)(cx[i]) & BITMASK(24)); f += tsz; }
     
     goto t; e: free(xp[0]); return NULL;
 }
