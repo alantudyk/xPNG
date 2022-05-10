@@ -345,8 +345,8 @@ t:  GET_TASK
     BITSTREAM_END(k); u64_t sz = *(u32_t *)(f + 4)  = (u8_t *)(k._p) - (f + 4); f += 4 + sz;
     
     bitstream_t b = { ._p = (u32_t *)(f + 4) };
-    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 14);
-    BITSTREAM_END(b); sz = *(u32_t *)(f) = (u8_t *)(b._p) - (f); f += sz;
+    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 12);
+    BITSTREAM_END(b); sz = *(u32_t *)f = (u8_t *)(b._p) - f; f += sz;
     fin(9) { memcpy(f, cx[i], sz = *(u32_t *)(cx[i]) & BITMASK(24)); f += sz; }
     
     u64_t tsz = t->w * t->h * RGB + 4, fsz = f - t->f;
@@ -585,7 +585,7 @@ t:  GET_TASK
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
     memcpy(cx, xp, 8 * 9);
     
-    fin(9) { decompress_block(f, 9, cx[i], &b, 14); f += *(u32_t *)f & BITMASK(24); }
+    fin(9) { decompress_block(f, 9, cx[i], &b, 12); f += *(u32_t *)f & BITMASK(24); }
     
     s31_t pix[3], nl = 0;
     const u64_t W = bpr - t->w * RGB; p += RGB;
