@@ -54,6 +54,7 @@ _Bool f_write(const char *fn, const reg_t *f);
 #define nil NULL
 #define not(CND) !(CND)
 #define unless(CND) if (not(CND))
+#define BETWEEN(l, v, r) ((l) <= (v) && (v) <= (r))
 #define BITMASK_SHL(n, shl) (((1LU << (n)) - 1) << (shl))
 #define BITMASK(n) BITMASK_SHL(n, 0)
 

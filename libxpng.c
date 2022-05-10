@@ -157,6 +157,7 @@ typedef struct Rans64EncSymbol {
 static void compress_block(u32_t *F, const u64_t N, u8_t **st, const u64_t st_size,
                            u8_t **_res, bitstream_t *b, const int PROB_BITS) {
     
+    unless(BETWEEN(10, PROB_BITS, 15)) exit(1);
     const u64_t PROB_SCALE = (1UL << PROB_BITS);
     const u64_t nBit = numBit((int)(N - 1));
     u32_t s = 0, cum[N + 1], *res = (u32_t *)*_res; cum[0] = 0;
@@ -258,6 +259,7 @@ static void compress_block(u32_t *F, const u64_t N, u8_t **st, const u64_t st_si
 static void decompress_block(const u8_t *f, const u64_t N, u8_t *x,
                              bitstream_t *b, const int PROB_BITS) {
     
+    unless(BETWEEN(10, PROB_BITS, 15)) exit(1);
     const u64_t PROB_SCALE = (1UL << PROB_BITS);
     const u64_t nBit = numBit((int)(N - 1));
     const u32_t *res = (u32_t *)f,
