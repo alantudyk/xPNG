@@ -24,7 +24,7 @@ Dir.entries(p).sort.each do | f |
         system("7/seven --to_7 '#{p + f}' /tmp/src.7") ||
             (puts("\t\t\x1b[31mconversion to *.7 failed\x1b[m\n\n"); next)
         
-        (1..2).each do | o |
+        [1, 2, 7].each do | o |
             
             Print_Result.call o, system(<<~CMD)
                 ./xpng -#{o} /tmp/src.7 /tmp/res.xpng > /dev/null &&

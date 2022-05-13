@@ -330,8 +330,8 @@ static PTHTF(enc_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
-    u8_t *xp[10]; MALLOC(xp[0], 65e5) ret NULL;
-    fix(1, 9, 1) xp[i] = xp[i - 1] + 500000; xp[9] = xp[0] + (u64_t)65e5;
+    u8_t *xp[10]; MALLOC(xp[0], 5e6) ret NULL;
+    fix(1, 10, 1) xp[i] = xp[i - 1] + 500000; xp[9] = xp[0] + (u64_t)5e6;
 
 t:  GET_TASK
     
@@ -508,13 +508,13 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     
     const xpng_t pmv = *pm_, *const pm = &pmv;
     if (normalize_RGBA((xpng_t *)pm)) ret 1;
-    if (pm->A) ret 1;
     
     u32_t h[2] = { (pm->w - 1) | (mode << 24), (pm->h - 1) | (pm->A << 24) };
     FILE *of = fopen(fn, "wb");
     if (of == NULL || fwrite(h, 1, 8, of) != 8) ret 1;
     
     if (mode == 7) ret fwrite(pm->p, 1, pm->s, of) != pm->s || fclose(of);
+    if (pm->A) ret 1;
     
     N_INIT; if (spawn_and_wait(T, &d, 0, (void* []){ NULL, enc_1_th, enc_2_th }[mode])) ret 1;
     
@@ -569,12 +569,12 @@ static PTHTF(dec_1_th) {
     
     data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
     
-    u8_t *cx[9], *xp[9]; MALLOC(xp[0], (u64_t)45e5) ret NULL;
-    fix(1, 9, 1) xp[i] = xp[i - 1] + 500000;
+    u8_t *xp[10]; MALLOC(xp[0], 5e6) ret NULL;
+    fix(1, 10, 1) xp[i] = xp[i - 1] + 500000;
     
 t:  GET_TASK
     
-    const u8_t *f = t->f;
+    const u8_t *f = t->f; u8_t *cx[10]; memcpy(cx, xp, 8 * 10);
     u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
     u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
     
@@ -585,7 +585,6 @@ t:  GET_TASK
     fin(3) t->p[i] = BITSTREAM_READ(k, 8);
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
-    memcpy(cx, xp, 8 * 9);
     
     fin(9) { decompress_block(f, 9, cx[i], &b, 12); f += *(u32_t *)f & BITMASK(24); }
     
@@ -692,7 +691,7 @@ _Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
     pm->w = (h[0] & BITMASK(24)) + 1, pm->h = (h[1] & BITMASK(24)) + 1, pm->A = (h[1] >> 24) & 1;
     const u64_t mode = h[0] >> 24;
     unless (mode == 1 || mode == 2 || mode == 7) ret 1;
-    pm->s = 3 * pm->w * pm->h;
+    pm->s = (3 + pm->A) * pm->w * pm->h;
     MALLOC(pm->p, pm->s) ret 1; if (mode == 7) ret !memcpy(pm->p, r.p + 8, pm->s);
     N_INIT; fin(N) t[i].f = r.p + x, x += *(u32_t *)t[i].f & BITMASK(24);
     if (spawn_and_wait(T, &d, 0, (void* []){ NULL, dec_1_th, dec_2_th }[mode])) ret 1;
