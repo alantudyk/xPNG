@@ -302,7 +302,7 @@ static void decompress_block(const u8_t *f, const u64_t N, u8_t *x,
 
 #undef RANS64_L
 
-#define M1E_ALPHA(pr, A) \
+#define M1E_ALPHA(A, pr) \
     if (A == 4) { \
         const int i = 3, v = (s7_t)(p[3] - pr(A)); \
         *cx[9]++ = (v << 1) ^ (v >> 31); \
@@ -315,8 +315,8 @@ static void decompress_block(const u8_t *f, const u64_t N, u8_t *x,
         BITSTREAM_WRITE(k, n3, (pix[0] << n2) | (pix[1] << nl) | pix[2]); \
         BITSTREAM_FLUSH(k); \
     } p += A;
-#define M1ENC(A, pr) M1E_ALPHA(pr, A); fin(3) pix[i] = p[i] - pr(A); M1ENC_(A)
-#define M1ENC4(A, Y, G) M1E_ALPHA(p1x_, A) \
+#define M1ENC(A, pr) M1E_ALPHA(A, pr); fin(3) pix[i] = p[i] - pr(A); M1ENC_(A)
+#define M1ENC4(A, Y, G) M1E_ALPHA(A, p1x_) \
     fin(3) pix[i] = p[i] - ((Y) ? p3a_(A) : p2a_(A)); \
     if (G) pix[0] -= pix[1], pix[2] -= pix[1]; M1ENC_(A)
 #define M1E3(func_name, A, Y, G) \
@@ -569,8 +569,8 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
     ret xpng_store_T(T_MAX, mode, pm, filename);
 }
 
-#define M1D_ALPHA(pr) \
-    if (PXSZ == 4) { \
+#define M1D_ALPHA(A, pr) \
+    if (A == 4) { \
          \
     }
 #define M1DEC_ \
@@ -582,9 +582,29 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
         pix[1] = (pix[2] >> nl) & BITMASK(nl), \
         pix[2] &= BITMASK(nl); \
     } else fin(3) pix[i] = 0; pix_toS;
-#define M1DEC(pr) M1D_ALPHA(); M1DEC_; pr(+); pix_copy(p, pix); p += PXSZ;
-#define M1DEC4 M1DEC_; if (G) pix[0] += pix[1], pix[2] += pix[1]; \
-                       if (Y) p3a(+); else p2a(+); pix_copy(p, pix); p += PXSZ;
+#define M1DEC(A, pr) M1D_ALPHA(A, pr); M1DEC_; fin(3) pix[i] += pr(A); pix_copy(p, pix); p += A;
+#define M1DEC4(A, Y, G) M1D_ALPHA(A, p1x_); M1DEC_; \
+    if (G) pix[0] += pix[1], pix[2] += pix[1]; \
+    fin(3) pix[i] += ((Y) ? p3a_(A) : p2a_(A)); pix_copy(p, pix); p += A;
+#define M1D3(func_name, A, Y, G) \
+NOINLINE static void func_name(bitstream_t *_k, u8_t **const cx, \
+        const s63_t bpr, const u64_t W, u8_t *p, u8_t *const P, u8_t *L) { \
+    bitstream_t k = *_k; s31_t pix[3], nl = 0; \
+    for (; p != L;) { M1DEC(A, p1x_); } p += W; \
+    for (; p != P;) { M1DEC(A, p1y_); for (L += bpr; p != L;) { M1DEC4(A, Y, G); } p += W; } \
+    *_k = k; \
+}
+
+M1D3(m1d_300, 3, 0, 0)
+M1D3(m1d_301, 3, 0, 1)
+M1D3(m1d_310, 3, 1, 0)
+M1D3(m1d_311, 3, 1, 1)
+M1D3(m1d_400, 4, 0, 0)
+M1D3(m1d_401, 4, 0, 1)
+M1D3(m1d_410, 4, 1, 0)
+M1D3(m1d_411, 4, 1, 1)
+
+#undef M1D3
 
 static PTHTF(dec_1_th) {
     
@@ -610,12 +630,12 @@ t:  GET_TASK
     
     fin(9) { decompress_block(f, 9, cx[i], &b, 12); f += *(u32_t *)f & BITMASK(24); }
     
-    s31_t pix[3], nl = 0;
     const u64_t W = bpr - t->w * PXSZ; p += PXSZ;
-    const _Bool Y = m & 2, G = m & 1;
     
-    for (; p != L;) { M1DEC(p1x); } p += W;
-    for (; p != P;) { M1DEC(p1y); for (L += bpr; p != L;) { M1DEC4; } p += W; }
+    (typeof(m1d_300)* []){
+        m1d_300, m1d_301, m1d_310, m1d_311,
+        m1d_400, m1d_401, m1d_410, m1d_411
+    }[m & 7](&k, cx, bpr, W, p, P, L);
     
     goto t;  e: free(xp[0]); return NULL;
 }
