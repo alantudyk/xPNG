@@ -44,16 +44,17 @@ static_assert(T_MAX >= 0);
     if (G) pix[0] -= pix[1], pix[2] -= pix[1]; ENC_
 
 typedef struct task_t { u8_t *p, *f; u64_t w, h; } task_t;
-typedef struct data_t { PTHSPT sp; task_t *t, *t_end; _Bool A; s63_t bpr; } data_t;
+typedef struct data_t { PTHSPT sp; task_t *t, *t_end; s63_t PXSZ, bpr; } data_t;
 
 #define TILE (444 * 444)
-__attribute__ ((noinline))
-static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
+
+NOINLINE static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
     
-    task_t *r, *t; const u8_t *p = pm->p; const u64_t bpr = pm->w * RGB;
+    task_t *r, *t; const u8_t *p = pm->p;
+    const s63_t PXSZ = 3 + pm->A, bpr = pm->w * PXSZ;
     u64_t w0, w1, w, h0, h1, h, Nw, Nh;
     
-    if (pm->s <= TILE * RGB) Nw = Nh = 1, w0 = pm->w, h0 = pm->h; else {
+    if (pm->s <= TILE * PXSZ) Nw = Nh = 1, w0 = pm->w, h0 = pm->h; else {
 
         if (pm->w < 444) w1 = w = pm->w, h1 = h = TILE / w;
         else if (pm->h < 444) h1 = h = pm->h, w1 = w = TILE / h;
@@ -72,7 +73,7 @@ static task_t* compute_props_of_each_tile(u64_t *N, const xpng_t *pm) {
         fiN(j, Nw) {
             t->w = (j == 0) ? w0 : (j == 1 ? w1 : w);
             t->h = (i == 0) ? h0 : (i == 1 ? h1 : h);
-            t->p = (u8_t *)p; p += t->w * RGB;
+            t->p = (u8_t *)p; p += t->w * PXSZ;
             t++;
         }
         p = pm->p + h0 * bpr + (i > 0 ? h1 * bpr + h * bpr * (i - 1) : 0);
@@ -144,7 +145,8 @@ NOINLINE static u64_t pp_rgbx(const task_t *t, const s63_t bpr, const s63_t PXSZ
 typedef struct bitstream_t { u64_t bc; u32_t l, *_p, *DP; } bitstream_t;
 #define N_INIT u64_t N; task_t *t = compute_props_of_each_tile(&N, pm); \
     if (t == NULL) ret 1; if (T == 0) T = sysconf(_SC_NPROCESSORS_ONLN); if (N < T) T = N; \
-    data_t d = { .t = t, .t_end = t + N, .A = pm->A, .bpr = (RGB + pm->A) * pm->w }; PTHSPI(&d.sp);
+    data_t d = { .t = t, .t_end = t + N, \
+        .PXSZ = 3 + pm->A, .bpr = (RGB + pm->A) * pm->w }; PTHSPI(&d.sp);
 #define GET_TASK PTHSPL(&d->sp); \
     if (d->t == d->t_end) { PTHSPU(&d->sp); goto e; } t = d->t++; PTHSPU(&d->sp);
 
@@ -304,7 +306,7 @@ static void decompress_block(const u8_t *f, const u64_t N, u8_t *x,
     if (A == 4) { \
         const int i = 3, v = (s7_t)(p[3] - pr(A)); \
         *cx[9]++ = (v << 1) ^ (v >> 31); \
-        if (p[3] == 0) continue; \
+        if (p[3] == 0) { p += A; continue; } \
     }
 #define M1ENC_(A) \
     pix_toU; numB(pix); F[(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
@@ -340,7 +342,7 @@ M1E3(m1e_411, 4, 1, 1)
 static PTHTF(enc_1_th) {
     
     data_t *const d = data; task_t *t;
-    _Bool A = d->A; const s63_t bpr = d->bpr, PXSZ = 3 + A;
+    const s63_t PXSZ = d->PXSZ, bpr = d->bpr;
     
     u8_t *xp[10]; MALLOC(xp[0], 5e6) ret NULL;
     fix(1, 10, 1) xp[i] = xp[i - 1] + 500000; xp[9] = xp[0] + (u64_t)5e6;
@@ -372,7 +374,7 @@ t:  GET_TASK
         t->f = f = realloc(t->f, fsz), *(u32_t *)f = (1 << 28) + (pr << 24) + fsz;
     else {
         t->f = f = realloc(t->f, tsz); *(u32_t *)f = tsz; f += 4;
-        for (p = t->p; p != P; p += bpr, f += t->w * RGB) memcpy(f, p, t->w * RGB);
+        for (p = t->p; p != P; p += bpr, f += t->w * PXSZ) memcpy(f, p, t->w * PXSZ);
     }
     
     goto t; e: free(xp[0]); return NULL;
@@ -567,6 +569,10 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
     ret xpng_store_T(T_MAX, mode, pm, filename);
 }
 
+#define M1D_ALPHA(pr) \
+    if (PXSZ == 4) { \
+         \
+    }
 #define M1DEC_ \
     if ((nl = *cx[nl]++)) { \
         BITSTREAM_FILL(k); \
@@ -576,13 +582,14 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
         pix[1] = (pix[2] >> nl) & BITMASK(nl), \
         pix[2] &= BITMASK(nl); \
     } else fin(3) pix[i] = 0; pix_toS;
-#define M1DEC(pr) M1DEC_; pr(+); pix_copy(p, pix); p += RGB;
+#define M1DEC(pr) M1D_ALPHA(); M1DEC_; pr(+); pix_copy(p, pix); p += PXSZ;
 #define M1DEC4 M1DEC_; if (G) pix[0] += pix[1], pix[2] += pix[1]; \
-                       if (Y) p3a(+); else p2a(+); pix_copy(p, pix); p += RGB;
+                       if (Y) p3a(+); else p2a(+); pix_copy(p, pix); p += PXSZ;
 
 static PTHTF(dec_1_th) {
     
-    data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
+    data_t *const d = data; task_t *t;
+    const s63_t PXSZ = d->PXSZ, bpr = d->bpr;
     
     u8_t *xp[10]; MALLOC(xp[0], 5e6) ret NULL;
     fix(1, 10, 1) xp[i] = xp[i - 1] + 500000;
@@ -590,21 +597,21 @@ static PTHTF(dec_1_th) {
 t:  GET_TASK
     
     const u8_t *f = t->f; u8_t *cx[10]; memcpy(cx, xp, 8 * 10);
-    u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
+    u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * PXSZ;
     u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
     
-    if (!m) { for (; p != P; p += bpr, f += t->w * RGB) memcpy(p, f, t->w * RGB); goto t; }
+    if (!m) { for (; p != P; p += bpr, f += t->w * PXSZ) memcpy(p, f, t->w * PXSZ); goto t; }
     
     bitstream_t k = { ._p = (u32_t *)(f + 4), .l = 32 };
     k.DP = (u32_t *)(f += *(u32_t *)f), k.bc = *(k._p)++;
-    fin(3) t->p[i] = BITSTREAM_READ(k, 8);
+    fin(PXSZ) t->p[i] = BITSTREAM_READ(k, 8);
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
     
     fin(9) { decompress_block(f, 9, cx[i], &b, 12); f += *(u32_t *)f & BITMASK(24); }
     
     s31_t pix[3], nl = 0;
-    const u64_t W = bpr - t->w * RGB; p += RGB;
+    const u64_t W = bpr - t->w * PXSZ; p += PXSZ;
     const _Bool Y = m & 2, G = m & 1;
     
     for (; p != L;) { M1DEC(p1x); } p += W;
