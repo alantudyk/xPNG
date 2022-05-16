@@ -43,7 +43,7 @@ MAIN_ARGS {
     if (strcmp(argv[1], "--to_png") == 0) goto d;
     if (strcmp(argv[1],   "--to_7") != 0) goto h;
     
-    if (png_image_begin_read_from_file(&img, argv[2]) > 1) ret 1;
+    png_image_begin_read_from_file(&img, argv[2]); if (img.warning_or_error > 1) ret 1;
     
     if (img.format & PNG_FORMAT_FLAG_LINEAR) ret 1;
     img.format = (img.format & PNG_FORMAT_FLAG_ALPHA) ? PNG_FORMAT_RGBA : PNG_FORMAT_RGB;
@@ -56,7 +56,7 @@ MAIN_ARGS {
     
     MALLOC(pm.p, pm.s = pm.w * pm.h * (3 + pm.A)) ret 1;
     
-    if (png_image_finish_read(&img, nil, pm.p, 0, nil) > 1) ret 1;
+    png_image_finish_read(&img, nil, pm.p, 0, nil); if (img.warning_or_error > 1) ret 1;
     
     ret (int)(normalize_RGBA(&pm) || store_7(&pm, argv[3]));
     
@@ -66,7 +66,9 @@ d:  if (load_7(argv[2], &pm)) ret 1;
     img.height = pm.h,
     img.format = pm.A ? PNG_FORMAT_RGBA : PNG_FORMAT_RGB;
     
-    ret (png_image_write_to_file(&img, argv[3], 0, pm.p, 0, nil) > 1);
+    png_image_write_to_file(&img, argv[3], 0, pm.p, 0, nil);
+    
+    ret (int)(img.warning_or_error > 1);
     
 h:  pf("\n"
 
