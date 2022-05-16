@@ -44,10 +44,9 @@ MAIN_ARGS {
     if (strcmp(argv[1],   "--to_7") != 0) goto h;
     
     if (png_image_begin_read_from_file(&img, argv[2]) > 1) ret 1;
-    unless (img.format == PNG_FORMAT_RGBA || img.format == PNG_FORMAT_RGB) {
-        if (img.format & PNG_FORMAT_FLAG_LINEAR) ret 1;
-        img.format = (img.format & PNG_FORMAT_FLAG_ALPHA) ? PNG_FORMAT_RGBA : PNG_FORMAT_RGB;
-    }
+    
+    if (img.format & PNG_FORMAT_FLAG_LINEAR) ret 1;
+    img.format = (img.format & PNG_FORMAT_FLAG_ALPHA) ? PNG_FORMAT_RGBA : PNG_FORMAT_RGB;
     
     pm = (xpng_t){
         .w = img.width,
