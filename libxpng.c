@@ -390,7 +390,7 @@ t:  GET_TASK
     if ((pix_0 = p[0]) != p[1] || p[1] != p[2]) ret 0; pr(pix_0, -); \
     G_toU(pix_0); fin(4) F[i][*st[i]++ = pix_0]++; p += RGB;
 
-static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
+NOINLINE static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
     if (t->p[0] != t->p[1] || t->p[1] != t->p[2]) ret 0; u8_t *res[4], *st[4], *f;
     memcpy(st, xp, sizeof(u8_t *) * 4); memcpy(res, xp + 5, sizeof(u8_t *) * 4);
@@ -477,8 +477,7 @@ t:  GET_TASK
     goto t; e: free(xp[0]); return NULL;
 }
 
-__attribute__ ((noinline))
-static _Bool normalize_RGBA(xpng_t *const d) {
+NOINLINE static _Bool normalize_RGBA(xpng_t *const d) {
     
     if (d->A == 0) ret 0;
     
@@ -592,7 +591,6 @@ NOINLINE static void func_name(bitstream_t *_k, u8_t **const cx, \
     bitstream_t k = *_k; s31_t pix[3], nl = 0; \
     for (; p != L;) { M1DEC(A, p1x_); } p += W; \
     for (; p != P;) { M1DEC(A, p1y_); for (L += bpr; p != L;) { M1DEC4(A, Y, G); } p += W; } \
-    *_k = k; \
 }
 
 M1D3(m1d_300, 3, 0, 0)
@@ -643,7 +641,7 @@ t:  GET_TASK
 #define DEC_GRAY(pr) \
     pix = *st++; pix = (pix >> 1) ^ (-(pix & 1)); p[0] = p[1] = p[2] = pr(pix, +); p += RGB;
 
-static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
+NOINLINE static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
     u8_t *st = xp[0], *f = t->f + 4, m = t->f[3] & BITMASK(2);
     
