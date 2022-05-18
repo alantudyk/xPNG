@@ -300,6 +300,198 @@ static void decompress_block(const u8_t *f, const u64_t N, u8_t *x,
     if (st_size & 1) *x = cum2sym[state0 & BITMASK(PROB_BITS)];
 }
 
+static inline u64_t bitstream_dword_aligned(const u64_t num_bits) {
+    ret (num_bits / 32) * 4 + (num_bits % 32 ? 4 : 0);
+}
+
+NOINLINE static u64_t compress_block_v2(u32_t *const F, const u64_t _N,
+                                      const u8_t *const in, const u64_t in_size,
+                                      u8_t *const out, const int PROB_BITS) {
+    
+    unless (BETWEEN(10, PROB_BITS, 15)) exit(1);
+    const u64_t PROB_SCALE = (1UL << PROB_BITS); u32_t *res = (u32_t *)out;
+    if (in_size == 0) { *res = 4; ret 4; }
+    int nit = _N; while (F[--nit] == 0);
+    const u64_t nBit = numBit(nit), N = nit + 1;
+    u32_t s = 0, cum[N + 1]; cum[0] = 0;
+    fin(N) cum[i + 1] = cum[i] + F[i], s += (_Bool)F[i];
+    if (s == 1) { res[0] = 8 + (1 << 24), res[1] = in_size + (in[0] << 24); ret 8; }
+    res += 3;
+    fix(1, N + 1, 1) cum[i] = (cum[i] * PROB_SCALE) / in_size;
+    fin(N) {
+        if (F[i] && cum[i + 1] == cum[i]) {
+            u32_t m = ~0u, best_steal, f;
+            fiN(j, N) { f = cum[j + 1] - cum[j]; if (f > 1 && f < m) m = f, best_steal = j; }
+            if (best_steal < i) fiX(j, best_steal + 1, i + 1, 1) cum[j]--;
+            else fiX(j, i + 1, best_steal + 1, 1) cum[j]++;
+        }
+    }
+    fin(N) F[i] = cum[i + 1] - cum[i];
+    
+    Rans64EncSymbol e[N]; fin(N) {
+        
+        e[i].freq = F[i];
+        e[i].cmpl_freq = (1 << PROB_BITS) - F[i];
+        
+        if (F[i] < 2) {
+            
+            e[i].rcp_freq = ~0UL;
+            e[i].rcp_shift = 0;
+            e[i].bias = cum[i] + ((1 << PROB_BITS) - 1);
+            
+        } else {
+            
+            u32_t shift = 0; while (F[i] > (1u << shift)) shift++;
+            u64_t x0, x1, t0, t1;
+    
+            x0 = F[i] - 1;
+            x1 = 1UL << (shift + 31);
+    
+            t1 = x1 / F[i];
+            x0 += (x1 % F[i]) << 32;
+            t0 = x0 / F[i];
+    
+            e[i].rcp_freq = t0 + (t1 << 32);
+            e[i].rcp_shift = shift - 1;
+    
+            e[i].bias = cum[i];
+            
+        }
+    }
+    
+    const u8_t *x = in, *const X = x + (in_size & ~1u);
+    u64_t state0 = RANS64_L, state1 = RANS64_L;
+    
+    for (; x < X; x += 2) {
+        
+        const Rans64EncSymbol *const sym0 = e + x[0];
+        const Rans64EncSymbol *const sym1 = e + x[1];
+        
+        if (state0 >= ((RANS64_L >> PROB_BITS) << 32) * sym0->freq)
+            *res++ = (u32_t)state0, state0 >>= 32;
+        if (state1 >= ((RANS64_L >> PROB_BITS) << 32) * sym1->freq)
+            *res++ = (u32_t)state1, state1 >>= 32;
+        
+        u64_t q0 = (uint64_t)(((unsigned __int128)state0 * sym0->rcp_freq) >> 64);
+        state0 += sym0->bias + (q0 >> sym0->rcp_shift) * sym0->cmpl_freq;
+        u64_t q1 = (uint64_t)(((unsigned __int128)state1 * sym1->rcp_freq) >> 64);
+        state1 += sym1->bias + (q1 >> sym1->rcp_shift) * sym1->cmpl_freq;
+        
+    }
+    
+    if (in_size & 1) {
+        
+        const Rans64EncSymbol *const sym0 = e + *x;
+        
+        if (state0 >= ((RANS64_L >> PROB_BITS) << 32) * sym0->freq)
+            *res++ = (u32_t)state0, state0 >>= 32;
+        
+        u64_t q0 = (uint64_t)(((unsigned __int128)state0 * sym0->rcp_freq) >> 64);
+        state0 += sym0->bias + (q0 >> sym0->rcp_shift) * sym0->cmpl_freq;
+        
+    }
+    
+    *(u64_t *)res = state0, *(u64_t *)(res + 2) = state1; res += 4;
+    
+    const u32_t tab_size = N + s * PROB_BITS;
+    _Bool compr_tab = tab_size < N * PROB_BITS;
+    bitstream_t b = { ._p = res };
+    u32_t *o = (u32_t *)out;
+    o[1] = in_size | ((N - 2) << 24), o[2] = (res - (o + 2)) | (PROB_BITS << 24);
+    
+    if (compr_tab)
+        fin(N) {
+            if (F[i]) BITSTREAM_WRITE(b, PROB_BITS + 1, F[i] + PROB_SCALE);
+            else BITSTREAM_WRITE(b, 1, 0);
+            BITSTREAM_FLUSH(b);
+        }
+    else
+        fin(N) {
+            BITSTREAM_WRITE(b, PROB_BITS, F[i]);
+            BITSTREAM_FLUSH(b);
+        }
+    
+    BITSTREAM_END(b); u32_t csz = (u8_t *)b._p - out;
+    *o = csz | ((3 + compr_tab) << 24);
+    
+    if (csz >= 8 + bitstream_dword_aligned(nBit * in_size)) {
+        b = (bitstream_t){ ._p = o + 2 }, out[7] = nBit;
+        for (const u8_t *x = in, *const X = x + in_size; x < X; x++) {
+            BITSTREAM_WRITE(b, nBit, *x); BITSTREAM_FLUSH(b);
+        }
+        BITSTREAM_END(b); *o = ((u8_t *)b._p - out) | (2 << 24);
+        ret *o & BITMASK(24);
+    }
+    
+    ret csz;
+}
+
+NOINLINE static u64_t decompress_block_v2(const u8_t *const in, u8_t *const out, u64_t *const dsz) {
+    
+    const u32_t *res = (u32_t *)in, type = *res >> 24; if (type == 0) { *dsz = 0; ret 4; }
+    const u64_t csz = *res++ & BITMASK(24); const u32_t *const end = (u32_t *)(in + csz);
+    bitstream_t b = { .DP = (u32_t *)end };
+    const u32_t out_size = *res & BITMASK(24), v2 = *res++ >> 24; *dsz = out_size;
+    
+    switch (type) {
+        case  1: memset(out, v2, out_size); ret csz;
+        case  2:
+            b._p = (u32_t *)res;
+            fin(out_size) {
+                BITSTREAM_FILL(b);
+                out[i] = BITSTREAM_READ(b, v2);
+            }
+            ret csz;
+    }
+    
+    const u32_t N = v2 + 2; u32_t F[N], cum[N + 1]; cum[0] = 0;
+    b._p = (u32_t *)res + (*res & BITMASK(24));
+    const int PROB_BITS = *res++ >> 24;
+    const u64_t PROB_SCALE = (1UL << PROB_BITS);
+    const u32_t *const R = res; res = (const u32_t *)(b._p);
+    
+    if (type == 3) 
+        fin(N) {
+            BITSTREAM_FILL(b);
+            F[i] = BITSTREAM_READ(b, PROB_BITS);
+        }
+    else
+        fin(N) {
+            BITSTREAM_FILL(b);
+            if ((F[i] = BITSTREAM_READ(b, 1))) F[i] = BITSTREAM_READ(b, PROB_BITS);
+        }
+    
+    fin(N) cum[i + 1] = cum[i] + F[i];
+    u8_t cum2sym[PROB_SCALE]; fin(N) memset(cum2sym + cum[i], i, F[i]);
+    
+    u64_t state1 = *(u64_t *)(res -= 2), state0 = *(u64_t *)(res -= 2);
+    
+    u8_t *x = out + out_size;
+    
+    if (out_size & 1) {
+        --x;
+        x[0] = cum2sym[state0 & BITMASK(PROB_BITS)];
+        state0 = (F[x[0]] * (state0 >> PROB_BITS) + (state0 & BITMASK(PROB_BITS))) - cum[x[0]];
+        if (state0 < RANS64_L) { if (res > R) --res; state0 = (state0 << 32) | *res; }
+    }
+    
+    for (x -= 2; x >= out; x -= 2) {
+        
+        x[1] = cum2sym[state1 & BITMASK(PROB_BITS)];
+        x[0] = cum2sym[state0 & BITMASK(PROB_BITS)];
+    
+        state1 = (F[x[1]] * (state1 >> PROB_BITS) + (state1 & BITMASK(PROB_BITS))) - cum[x[1]];
+        state0 = (F[x[0]] * (state0 >> PROB_BITS) + (state0 & BITMASK(PROB_BITS))) - cum[x[0]];
+    
+        if (state1 < RANS64_L) { if (res > R) --res; state1 = (state1 << 32) | *res; }
+        if (state0 < RANS64_L) { if (res > R) --res; state0 = (state0 << 32) | *res; }
+        
+    }
+    
+    ret csz;
+
+}
+
 #undef RANS64_L
 
 #define M1E_ALPHA(A, pr) \
@@ -363,10 +555,7 @@ t:  GET_TASK
     
     BITSTREAM_END(k); u64_t sz = *(u32_t *)(f + 4)  = (u8_t *)(k._p) - (f + 4); f += 4 + sz;
     
-    bitstream_t b = { ._p = (u32_t *)(f + 4) };
-    fin(9) compress_block(F + i * 16, 9, cx + i, cx[i] - xp[i], cx + 9, &b, 12);
-    BITSTREAM_END(b); sz = *(u32_t *)f = (u8_t *)(b._p) - f; f += sz;
-    fin(9) { memcpy(f, cx[i], sz = *(u32_t *)(cx[i]) & BITMASK(24)); f += sz; }
+    fin(9) f += compress_block_v2(F + i * 16, 9, xp[i], cx[i] - xp[i], f, 12);
     
     u64_t tsz = t->w * t->h * PXSZ + 4, fsz = f - t->f;
     
@@ -623,10 +812,9 @@ t:  GET_TASK
     bitstream_t k = { ._p = (u32_t *)(f + 4), .l = 32 };
     k.DP = (u32_t *)(f += *(u32_t *)f), k.bc = *(k._p)++;
     fin(PXSZ) t->p[i] = BITSTREAM_READ(k, 8);
-    bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
-    b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
     
-    fin(9) { decompress_block(f, 9, cx[i], &b, 12); f += *(u32_t *)f & BITMASK(24); }
+    u64_t dsz;
+    fin(9) { f += decompress_block_v2(f, cx[i], &dsz); }
     
     const u64_t W = bpr - t->w * PXSZ; p += PXSZ;
     
