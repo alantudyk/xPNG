@@ -497,16 +497,16 @@ NOINLINE static u64_t decompress_block_v2(const u8_t *const in, u8_t *const out,
 #define M1E_ALPHA(A, pr) \
     if (A == 4) { \
         const int i = 3, v = (s7_t)(p[3] - pr(A)); \
-        *cx[9]++ = (v << 1) ^ (v >> 31); \
-        if (p[3] == 0) { p += A; continue; } \
-    }
+        FA[*cx[9]++ = (v << 1) ^ (v >> 31)]++; \
+    } \
+    if (A == 4 && p[3] == 0); else {
 #define M1ENC_(A) \
     pix_toU; numB(pix); F[(pl << 4) + nl]++, pl = *cx[pl]++ = nl; \
     if (nl) { \
         const int n2 = nl << 1, n3 = n2 + nl; \
         BITSTREAM_WRITE(k, n3, (pix[0] << n2) | (pix[1] << nl) | pix[2]); \
         BITSTREAM_FLUSH(k); \
-    } p += A;
+    } } p += A;
 #define M1ENC(A, pr) M1E_ALPHA(A, pr); fin(3) pix[i] = p[i] - pr(A); M1ENC_(A)
 #define M1ENC4(A, Y, G) M1E_ALPHA(A, p1x_) \
     fin(3) pix[i] = p[i] - ((Y) ? p3a_(A) : p2a_(A)); \
@@ -514,7 +514,7 @@ NOINLINE static u64_t decompress_block_v2(const u8_t *const in, u8_t *const out,
 #define M1E3(func_name, A, Y, G) \
 NOINLINE static void func_name(u32_t *const F, bitstream_t *_k, u8_t **const cx, \
         const s63_t bpr, const u64_t W, const u8_t *p, const u8_t *const P, const u8_t *L) { \
-    bitstream_t k = *_k; s31_t pix[3], nl; u32_t pl = 0; \
+    bitstream_t k = *_k; s31_t pix[3], nl; u32_t pl = 0; u32_t *const FA = F + 256; \
     for (; p != L;) { M1ENC(A, p1x_); } p += W; \
     for (; p != P;) { M1ENC(A, p1y_); for (L += bpr; p != L;) { M1ENC4(A, Y, G); } p += W; } \
     *_k = k; \
@@ -720,7 +720,7 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     if (of == NULL || fwrite(h, 1, 8, of) != 8) ret 1;
     
     if (mode == 7) ret fwrite(pm->p, 1, pm->s, of) != pm->s || fclose(of);
-    if (pm->A) ret 1;
+    if (pm->A && mode == 2) ret 1;
     
     N_INIT; if (spawn_and_wait(T, &d, 0, (void* []){ NULL, enc_1_th, enc_2_th }[mode])) ret 1;
     
@@ -758,11 +758,13 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
     ret xpng_store_T(T_MAX, mode, pm, filename);
 }
 
-#define M1D_ALPHA(A, pr) \
+#define M1DEC_(A, pr) \
     if (A == 4) { \
-         \
-    }
-#define M1DEC_ \
+         int i = 3, v = *cx[9]++; \
+         v = (v >> 1) ^ (-(v & 1)); \
+         p[3] = v + pr(A); \
+    } \
+    if (A == 4 && p[3] == 0) *(u32_t *)p = 0; else { \
     if ((nl = *cx[nl]++)) { \
         BITSTREAM_FILL(k); \
         const int n2 = nl << 1, n3 = n2 + nl; \
@@ -771,10 +773,10 @@ _Bool xpng_store(const u64_t mode, const xpng_t *pm, const char *const filename)
         pix[1] = (pix[2] >> nl) & BITMASK(nl), \
         pix[2] &= BITMASK(nl); \
     } else fin(3) pix[i] = 0; pix_toS;
-#define M1DEC(A, pr) M1D_ALPHA(A, pr); M1DEC_; fin(3) pix[i] += pr(A); pix_copy(p, pix); p += A;
-#define M1DEC4(A, Y, G) M1D_ALPHA(A, p1x_); M1DEC_; \
+#define M1DEC(A, pr) M1DEC_(A, pr); fin(3) pix[i] += pr(A); pix_copy(p, pix); } p += A;
+#define M1DEC4(A, Y, G) M1DEC_(A, p1x_); \
     if (G) pix[0] += pix[1], pix[2] += pix[1]; \
-    fin(3) pix[i] += ((Y) ? p3a_(A) : p2a_(A)); pix_copy(p, pix); p += A;
+    fin(3) pix[i] += ((Y) ? p3a_(A) : p2a_(A)); pix_copy(p, pix); } p += A;
 #define M1D3(func_name, A, Y, G) \
 NOINLINE static void func_name(bitstream_t *_k, u8_t **const cx, \
         const s63_t bpr, const u64_t W, u8_t *p, u8_t *const P, u8_t *L) { \
