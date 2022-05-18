@@ -537,7 +537,7 @@ static PTHTF(enc_1_th) {
     const s63_t PXSZ = d->PXSZ, bpr = d->bpr;
     
     u8_t *xp[10]; MALLOC(xp[0], 5e6) ret NULL;
-    fix(1, 10, 1) xp[i] = xp[i - 1] + 500000; xp[9] = xp[0] + (u64_t)5e6;
+    fix(1, 10, 1) xp[i] = xp[i - 1] + 500000;
 
 t:  GET_TASK
     
@@ -556,6 +556,7 @@ t:  GET_TASK
     BITSTREAM_END(k); u64_t sz = *(u32_t *)(f + 4)  = (u8_t *)(k._p) - (f + 4); f += 4 + sz;
     
     fin(9) f += compress_block_v2(F + i * 16, 9, xp[i], cx[i] - xp[i], f, 12);
+    if (PXSZ == 4) f += compress_block_v2(F + 256, 256, xp[9], cx[9] - xp[9], f, 15);
     
     u64_t tsz = t->w * t->h * PXSZ + 4, fsz = f - t->f;
     
@@ -797,13 +798,11 @@ static PTHTF(dec_1_th) {
     
     data_t *const d = data; task_t *t;
     const s63_t PXSZ = d->PXSZ, bpr = d->bpr;
-    
-    u8_t *xp[10]; MALLOC(xp[0], 5e6) ret NULL;
-    fix(1, 10, 1) xp[i] = xp[i - 1] + 500000;
+    u8_t *xp; MALLOC(xp, 5e5 * (1 + (PXSZ == 4))) ret NULL;
     
 t:  GET_TASK
     
-    const u8_t *f = t->f; u8_t *cx[10]; memcpy(cx, xp, 8 * 10);
+    const u8_t *f = t->f; u8_t *cx[10]; cx[0] = xp;
     u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * PXSZ;
     u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
     
@@ -813,8 +812,8 @@ t:  GET_TASK
     k.DP = (u32_t *)(f += *(u32_t *)f), k.bc = *(k._p)++;
     fin(PXSZ) t->p[i] = BITSTREAM_READ(k, 8);
     
-    u64_t dsz;
-    fin(9) { f += decompress_block_v2(f, cx[i], &dsz); }
+    u64_t dsz; fin(9) f += decompress_block_v2(f, cx[i], &dsz), cx[i + 1] = cx[i] + dsz;
+    if (PXSZ == 4) decompress_block_v2(f, cx[9], &dsz);
     
     const u64_t W = bpr - t->w * PXSZ; p += PXSZ;
     
@@ -823,7 +822,7 @@ t:  GET_TASK
         m1d_400, m1d_401, m1d_410, m1d_411
     }[m & 7](&k, cx, bpr, W, p, P, L);
     
-    goto t;  e: free(xp[0]); return NULL;
+    goto t;  e: free(xp); return NULL;
 }
 
 #define DEC_GRAY(pr) \
