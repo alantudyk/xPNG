@@ -726,7 +726,7 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     
     TIME_GET_STOP; u64_t ns = TIME_DIFF_NS;
     pf("encode, %3d thread%c: %5lu MPx/s\n",
-       (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / 3e6)));
+       (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / ((3 + pm->A) * 1e6))));
     
     u64_t x = 0;
     fin(N) {
@@ -927,7 +927,7 @@ _Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
     
     TIME_GET_STOP; u64_t ns = TIME_DIFF_NS;
     pf("decode, %3d thread%c: %5lu MPx/s\n",
-        (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / 3e6)));
+        (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / ((3 + pm->A) * 1e6))));
     
     ret 0;
     
