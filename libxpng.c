@@ -714,19 +714,19 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     
     const xpng_t pmv = *pm_, *const pm = &pmv;
     if (normalize_RGBA((xpng_t *)pm)) ret 1;
+    if (pm->A && mode == 2) *(u64_t *)&mode = 1;
     
     u32_t h[2] = { (pm->w - 1) | (mode << 24), (pm->h - 1) | (pm->A << 24) };
     FILE *of = fopen(fn, "wb");
     if (of == NULL || fwrite(h, 1, 8, of) != 8) ret 1;
     
     if (mode == 7) ret fwrite(pm->p, 1, pm->s, of) != pm->s || fclose(of);
-    if (pm->A && mode == 2) ret 1;
     
     N_INIT; if (spawn_and_wait(T, &d, 0, (void* []){ NULL, enc_1_th, enc_2_th }[mode])) ret 1;
     
     TIME_GET_STOP; u64_t ns = TIME_DIFF_NS;
     pf("encode, %3d thread%c: %5lu MPx/s\n",
-       (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / ((3 + pm->A) * 1e6))));
+       (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / (d.PXSZ * 1e6))));
     
     u64_t x = 0;
     fin(N) {
@@ -927,7 +927,7 @@ _Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
     
     TIME_GET_STOP; u64_t ns = TIME_DIFF_NS;
     pf("decode, %3d thread%c: %5lu MPx/s\n",
-        (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / ((3 + pm->A) * 1e6))));
+        (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / (d.PXSZ * 1e6))));
     
     ret 0;
     
