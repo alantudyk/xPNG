@@ -625,23 +625,41 @@ NOINLINE static _Bool is_grayscale(const s63_t bpr, task_t *t, u8_t *const *cons
     ret 1;
 }
 
+NOINLINE static _Bool is_single_color(task_t *t, const s63_t PXSZ, const s63_t bpr) {
+    
+    const u64_t rsz  = t->w * PXSZ;
+    const u8_t *const _p = t->p,      *const L = _p + rsz,
+                      *p = _p + PXSZ, *const P = _p + bpr * t->h;
+    
+    for (; p < L; p += PXSZ) if (memcmp(_p, p, PXSZ)) ret 0;
+    for (p = _p + bpr; p < P; p += bpr) if (memcmp(_p, p, rsz)) ret 0;
+    
+    CALLOC(t->f, 8) ret 0;
+    
+    *(u32_t *)(t->f) = (255 << 24) | 8;
+    memcpy(t->f + 4, _p, PXSZ);
+    
+    ret 1;
+}
+
 static PTHTF(enc_2_th) {
     
-    data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
+    data_t *const d = data; task_t *t;
+    const s63_t PXSZ = d->PXSZ, bpr = d->bpr;
     
     u8_t *f, *cx[9], *st[9], *xp[19]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
     fix(1, 19, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : (i < 18 ? 3 : 4));
 
 t:  GET_TASK
     
-    if (is_grayscale(bpr, t, xp)) goto t;
+    if (is_single_color(t, PXSZ, bpr) || is_grayscale(bpr, t, xp)) goto t;
     
     u32_t F[9][256] = {};
     memcpy(cx, xp, 8 * 9); memcpy(st + 1, xp + 9, 8 * 8); xp[17] = xp[18];
     bitstream_t b = { ._p = (u32_t *)(xp[18] + 4), .l = 24 };
     fin(3) b.bc = (b.bc << 8) + t->p[i];
-    const u64_t W = bpr - t->w * 3; s31_t pix[3], nl; u32_t pl = 0;
-    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3; p += RGB;
+    const u64_t W = bpr - t->w * PXSZ; s31_t pix[3], nl; u32_t pl = 0;
+    const u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * PXSZ; p += PXSZ;
     const u64_t pr = pp_rgbx(t, bpr, 3); const _Bool Y = pr & 2, G = pr & 1;
     
     for (; p != L;) { ENC(p1x); } p += W;
@@ -830,7 +848,7 @@ t:  GET_TASK
 #define DEC_GRAY(pr) \
     pix = *st++; pix = (pix >> 1) ^ (-(pix & 1)); p[0] = p[1] = p[2] = pr(pix, +); p += RGB;
 
-NOINLINE static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
+NOINLINE static void when_grayscale(const s63_t bpr, task_t *t, u8_t *const *const xp) {
     
     u8_t *st = xp[0], *f = t->f + 4, m = t->f[3] & BITMASK(2);
     
@@ -878,9 +896,23 @@ NOINLINE static void if_grayscale(const s63_t bpr, task_t *t, u8_t *const *const
     if (G) pix[0] += pix[1], pix[2] += pix[1]; if (Y) p3a(+); else p2a(+); \
     pix_copy(p, pix); p += RGB;
 
+NOINLINE static void when_single_color(task_t *t, const s63_t PXSZ, const s63_t bpr) {
+    
+    const u64_t rsz  = t->w * PXSZ;
+    u8_t *const _p = t->p,      *const L = _p + rsz,
+                *p = _p + PXSZ, *const P = _p + bpr * t->h;
+    
+    memcpy(_p, t->f + 4, PXSZ);
+    
+    for (; p < L; p += PXSZ) memcpy(p, _p, PXSZ);
+    for (p = _p + bpr; p < P; p += bpr) memcpy(p, _p, rsz);
+    
+}
+
 static PTHTF(dec_2_th) {
     
-    data_t *const d = data; const s63_t bpr = d->bpr; task_t *t;
+    data_t *const d = data; task_t *t;
+    const s63_t PXSZ = d->PXSZ, bpr = d->bpr;
     
     u8_t *cx[9], *st[9], *xp[17]; MALLOC(xp[0], (u64_t)2e7) ret NULL;
     fix(1, 17, 1) xp[i] = xp[i - 1] + 500000 * (i < 12 ? 1 : 3);
@@ -890,7 +922,8 @@ t:  GET_TASK
     const u8_t *f = t->f; u8_t *p = t->p, *const P = p + bpr * t->h, *L = p + t->w * 3;
     u32_t t_size = *(u32_t *)f & BITMASK(24), m = f[3]; f += 4;
     if (!m) { for (; p != P; p += bpr, f += t->w * 3) memcpy(p, f, t->w * 3); goto t; }
-    if ((m >> 4) == 2) { if_grayscale(bpr, t, xp); goto t; }
+    if (m == 255) { when_single_color(t, PXSZ, bpr); goto t; }
+    if ((m >> 4) == 2) { when_grayscale(bpr, t, xp); goto t; }
     bitstream_t b = { ._p = (u32_t *)(f + 4), .l = 32 };
     b.DP = (u32_t *)(f += *(u32_t *)f), b.bc = *(b._p)++;
     fin(3) t->p[i] = (b.bc >> (b.l -= 8)) & 255;
