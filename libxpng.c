@@ -636,7 +636,7 @@ NOINLINE static _Bool is_single_color(task_t *t, const s63_t PXSZ, const s63_t b
     
     CALLOC(t->f, 8) ret 0;
     
-    *(u32_t *)(t->f) = (255 << 24) | 8;
+    *(u32_t *)(t->f) = (255u << 24) | 8;
     memcpy(t->f + 4, _p, PXSZ);
     
     ret 1;
@@ -733,6 +733,7 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     const xpng_t pmv = *pm_, *const pm = &pmv;
     if (normalize_RGBA((xpng_t *)pm)) ret 1;
     if (pm->A && mode == 2) *(u64_t *)&mode = 1;
+    if (pm->s <= 4) *(u64_t *)&mode = 7;
     
     u32_t h[2] = { (pm->w - 1) | (mode << 24), (pm->h - 1) | (pm->A << 24) };
     FILE *of = fopen(fn, "wb");
@@ -746,7 +747,23 @@ _Bool xpng_store_T(u64_t T, const u64_t mode, const xpng_t *const pm_, const cha
     pf("encode, %3d thread%c: %5lu MPx/s\n",
        (int)T, T > 1 ? 's' : ' ', (u64_t)((1e9 / ns) * (pm->s / (d.PXSZ * 1e6))));
     
-    u64_t x = 0;
+    if (mode == 2 && *(u32_t *)(t[0].f) == ((255u << 24) | 8)) {
+        
+        fix(1, N, 1) if (memcmp(t[0].f, t[i].f, 8)) goto ns;
+        
+        ((u8_t *)h)[7] |= 2;
+        u32_t c = (255u << 24) | *(u32_t *)(t[0].f + 4);
+        fin(N) free(t[i].f);
+        
+        if (fclose(of)
+            || (of = fopen(fn, "wb")) == nil
+            || fwrite( h, 1, 8, of) != 8
+            || fwrite(&c, 1, 4, of) != 4) ret 1;
+        
+        goto e;
+    }
+    
+ns: u64_t x = 0;
     fin(N) {
         u32_t sz = *(u32_t *)(t[i].f) & BITMASK(24);
         if (fwrite(t[i].f, 1, sz, of) != sz) ret 1;
@@ -766,7 +783,9 @@ e:  if (pm->p != pm_->p) free(pm->p);
     ret (_Bool)fclose(of);
 
 #else
+
 #error
+
 #endif
 
 }
@@ -955,6 +974,12 @@ _Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
     unless (mode == 1 || mode == 2 || mode == 7) ret 1;
     pm->s = (3 + pm->A) * pm->w * pm->h;
     MALLOC(pm->p, pm->s) ret 1; if (mode == 7) ret !memcpy(pm->p, r.p + 8, pm->s);
+    
+    if (r.s == 12 && (r.p[7] & 2) && r.p[11] == 255) {
+        task_t t = { .p = pm->p, .w = pm->w, .h = pm->h, .f = r.p + 4 };
+        when_single_color(&t, 3, t.w * 3); ret 0;
+    }
+    
     N_INIT; fin(N) t[i].f = r.p + x, x += *(u32_t *)t[i].f & BITMASK(24);
     if (spawn_and_wait(T, &d, 0, (void* []){ NULL, dec_1_th, dec_2_th }[mode])) ret 1;
     
@@ -965,7 +990,9 @@ _Bool xpng_load_T(u64_t T, const char *const xpng, xpng_t *pm) {
     ret 0;
     
 #else
+
 #error
+
 #endif
 
 }
