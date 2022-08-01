@@ -1,5 +1,5 @@
 // To-do:
-// Skipping unnecessary move-steps (when only one bucket used).
+// Skipping unnecessary move-steps (when only one counter used).
 
 #include "until_fork.h"
 
