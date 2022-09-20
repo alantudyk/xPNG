@@ -1,5 +1,4 @@
-#ifndef ___UNTIL_FORK_H
-#define ___UNTIL_FORK_H
+#pragma once
 
 #define static_assert(CND) _Static_assert(CND, "");
 
@@ -84,5 +83,3 @@ _Bool f_write(const char *fn, const reg_t *f);
 _Bool spawn_and_wait(size_t T, void *d_arr, size_t d_elem_sz, void* (*f)(void *));
 
 void* rsort(size_t T, const char *Type, const char *Ord, void *A, size_t L, void *Ext_Buff);
-
-#endif

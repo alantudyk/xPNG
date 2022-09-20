@@ -1,5 +1,4 @@
-#ifndef ___XPNG_H
-#define ___XPNG_H
+#pragma once
 
 #include "until_fork/until_fork.h"
 
@@ -19,5 +18,3 @@ CHECK _Bool xpng_store_T(u64_t T, u64_t mode, const xpng_t *pm, const char *xpng
 CHECK _Bool xpng_load_T(u64_t T, const char *xpng, xpng_t *pm);
 
 CHECK _Bool xpng_from_jpg_T(u64_t T, const char *jpg, const char *xpng);
-
-#endif
