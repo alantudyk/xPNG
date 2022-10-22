@@ -13,9 +13,7 @@ MAIN_VOID {
                             
                 ssize_t Y, Co, Cg, r, g, b;
                 
-                Y =  (((R + B) >> 1) + G) >> 1;
-                Co = R - B;
-                Cg = G - ((R + B) >> 1);
+                Cg = G - (Y = B + ((Co = R - B) >> 1)), Y += Cg >> 1;
                 
                 if (Y < Y_min) Y_min = Y;
                 if (Y > Y_max) Y_max = Y;
@@ -24,15 +22,7 @@ MAIN_VOID {
                 if (Cg < Cg_min) Cg_min = Cg;
                 if (Cg > Cg_max) Cg_max = Cg;
                 
-                //Co = (s7_t)Co;
-                //Cg = (s7_t)Cg;
-                
-                r = Co + Y + ((1 - Cg) >> 1) - (Co >> 1);
-                g = Y - (-Cg >> 1);
-                b = Y + ((1 - Cg) >> 1) - (Co >> 1);
-                
-                //g = (u8_t)g;
-                //b = (u8_t)b;
+                g = Cg + (b = Y - (Cg >> 1)), r = (b -= Co >> 1) + Co;
                 
                 if (R != r || G != g || B != b) {
                     pf("\nFailed: R = %3ld,  G = %3ld,  B = %3ld\n",   R,  G,  B);
