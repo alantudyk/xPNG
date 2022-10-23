@@ -25,9 +25,9 @@ MAIN_VOID {
                 g = Cg + (b = Y - (Cg >> 1)), r = (b -= Co >> 1) + Co;
                 
                 if (R != r || G != g || B != b) {
-                    pf("\nFailed: R = %3ld,  G = %4ld,  B = %4ld\n",   R,  G,  B);
-                    pf(  "        r = %3ld,  g = %4ld,  b = %4ld\n",   r,  g,  b);
-                    pf(  "        Y = %3ld, Co = %4ld, Cg = %4ld\n\n", Y, Co, Cg);
+                    pf("\nFailed: R = %4ld,  G = %4ld,  B = %4ld\n",   R,  G,  B);
+                    pf(  "        r = %4ld,  g = %4ld,  b = %4ld\n",   r,  g,  b);
+                    pf(  "        Y = %4ld, Co = %4ld, Cg = %4ld\n\n", Y, Co, Cg);
                     ret 1;
                 }
                 
