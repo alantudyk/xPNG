@@ -1,3 +1,3 @@
 #!/bin/sh
 
-gcc -O3 -flto YCoCg.c && ./a.out
+gcc -O3 -flto YCoCg-R.c && ./a.out
