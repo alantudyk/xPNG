@@ -1,9 +1,8 @@
-#include "../until_fork/until_fork.h"
+#include "../7/seven.h"
 
-typedef struct pm_t { u8_t *p; u64_t w, h, s; } pm_t;
 #define PERR(CND, STR) if (CND) { pf("\n\t%s\n\tDecoding failed.\n\n", STR); exit(1); }
 
-void decode(const reg_t *const r, pm_t *const pm, u64_t *const T) {
+void decode(const reg_t *const r, xpng_t *const pm, u64_t *const T) {
     
     if (r->s < 25 || memcmp(r->p, "RIFF", 4) || memcmp(r->p + 8, "WEBP", 4)) exit(1);
     PERR(memcmp(r->p + 12, "VP8L", 4), "Bytes 12-15 must be equal to the string 'VP8L'.");
@@ -21,7 +20,7 @@ void decode(const reg_t *const r, pm_t *const pm, u64_t *const T) {
 
 MAIN_ARGS {
     
-    reg_t r; pm_t pm; u64_t T, ns; TIME_PAIR;
+    reg_t r; xpng_t pm; u64_t T, ns; TIME_PAIR;
     if (argc != 3 || f_read(argv[1], &r)) ret 1;
     
     TIME_DIFF_EXEC(decode(&r, &pm, &T), NS, ns);
