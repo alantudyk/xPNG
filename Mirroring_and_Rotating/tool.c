@@ -10,6 +10,25 @@ NOINLINE static void op_r270(xpng_t *const pm) {
 
 NOINLINE static void op_mv(xpng_t *const pm) {
     
+    u64_t bpr = (pm->A + 3) * pm->w;
+    u8_t *a = pm->p, *b = (a + pm->s) - bpr;
+    
+    while (a < b) {
+        
+        {
+            u64_t t, *x = (void *)a, *y = (void *)b;
+            fin((bpr & ~7UL) / 8) t = *x, *x++ = *y, *y++ = t;
+        }
+        
+        {
+            u8_t t, *x = a + (bpr & ~7UL), *y = b + (bpr & ~7UL);
+            fin(bpr & 7) t = *x, *x++ = *y, *y++ = t;
+        }
+        
+        a += bpr, b -= bpr;
+        
+    }
+    
 }
 
 NOINLINE static void op_mh(xpng_t *const pm) {
