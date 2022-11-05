@@ -17,11 +17,15 @@ a = []; w = 0
 ['   0', '  90', ' 180', ' 270'].each do | r |
 
     ['    ', ' + v', ' + h'].each do | m |
+    
         system(m[1] == ?+ ?
                    "./tool --m#{m[3]} /tmp/s.7 /tmp/x.7" :
                    'cp /tmp/s.7 /tmp/x.7') || raise
         a << [z = Z.call, "\t#{r}#{m}    =>    "]
         w = z if (z = z.to_s.size) > w
+        
+        break if [' 180', ' 270'].include? r
+        
     end
     
     system('./tool --r90 /tmp/s.7 /tmp/s.7') || raise
