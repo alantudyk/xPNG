@@ -2,6 +2,23 @@
 
 NOINLINE static void op_r90(xpng_t *const pm) {
     
+    u8_t *const a = pm->p, *b; MALLOC(b, pm->s) exit(1);
+    const u64_t z = pm->A + 3, bpr = z * pm->w, bw = z * pm->h;
+    
+    fin(pm->h)
+        fiN(j, pm->w) {
+            
+            u8_t *x = (a + i * bpr) + j * z,
+                 *y = (b + j * bw ) + (bw - (i + 1) * z);
+            
+            if (z == 3)
+                *(u16_t *)y = *(u16_t *)x, y[2] = x[2];
+            else
+                *(u32_t *)y = *(u32_t *)x;
+        }
+    
+    free(a); pm->p = b, pm->w = pm->h, pm->h = bpr / z;
+    
 }
 
 NOINLINE static void op_r270(xpng_t *const pm) {
