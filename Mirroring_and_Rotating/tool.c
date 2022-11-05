@@ -33,6 +33,35 @@ NOINLINE static void op_mv(xpng_t *const pm) {
 
 NOINLINE static void op_mh(xpng_t *const pm) {
     
+    const u64_t z = pm->A + 3, bpr = z * pm->w;
+    u8_t *a = pm->p, *const A = a + pm->s;
+    
+    while (a < A) {
+        
+        u8_t *x = a, *y = (a + bpr) - z; u32_t t;
+        
+        if (z == 3)
+        
+            while (x < y) 
+                t = *(u16_t *)x, t |= x[2] << 16,
+                *(u16_t *)x = *(u16_t *)y, x[2] = y[2],
+                *(u16_t *)y = t, y[2] = t >> 16,
+                x += z,
+                y -= z;
+            
+        else
+        
+            while (x < y)
+                t = *(u32_t *)x,
+                *(u32_t *)x = *(u32_t *)y,
+                *(u32_t *)y = t,
+                x += z,
+                y -= z;
+        
+        a += bpr;
+        
+    }
+    
 }
 
 NOINLINE static void op_mvh(xpng_t *const pm) {
