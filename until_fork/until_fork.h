@@ -2,7 +2,7 @@
 
 #define static_assert(CND) _Static_assert(CND, "");
 
-static_assert(__SIZEOF_POINTER__ == 8);
+static_assert(__linux__ && __SIZEOF_POINTER__ == 8);
 
 #include <pthread.h>
 #include <stdbool.h>
