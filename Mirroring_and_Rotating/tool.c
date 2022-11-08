@@ -58,7 +58,7 @@ NOINLINE static void op_mh(xpng_t *const pm) {
 
 NOINLINE static void op_mvh(xpng_t *const pm) {
     
-    const u64_t z = pm->A + 3, bpr = z * pm->w, wa = z * (pm->w / 2 + (pm->w & 1));
+    const u64_t z = pm->A + 3, bpr = z * pm->w, wa = z * (pm->w / 2);
     u8_t *a = pm->p, *b = (a + pm->s) - bpr;
     
     while (a <= b) {
