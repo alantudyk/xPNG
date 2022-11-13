@@ -37,6 +37,7 @@ $ ./miniruby ../ruby_sort/test.rb  # rsort
 	Run #4: 0.323 s
 	Run #5: 0.342 s
 
+$ git diff
 diff --git a/array.c b/array.c
 index a33c43bdbf..fe52291c21 100644
 --- a/array.c
