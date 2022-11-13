@@ -37,12 +37,11 @@ $ ./miniruby ../ruby_sort/test.rb  # rsort
 	Run #4: 0.323 s
 	Run #5: 0.342 s
 
-$ git diff
 diff --git a/array.c b/array.c
-index a33c43bdbf..578d9443cd 100644
+index a33c43bdbf..fe52291c21 100644
 --- a/array.c
 +++ b/array.c
-@@ -3521,6 +3521,52 @@ sort_2(const void *ap, const void *bp, void *dummy)
+@@ -3521,6 +3521,83 @@ sort_2(const void *ap, const void *bp, void *dummy)
      return n;
  }
  
@@ -50,41 +49,72 @@ index a33c43bdbf..578d9443cd 100644
 +
 +static int rsort(void *const _p, const long l) {
 +
-+    for (const VALUE *p = _p, *const P = p + l; p < P;)
++    for (const VALUE *p = _p, *const P = p + 64; p < P;)
 +        if (!FIXNUM_P(*p++)) return 1;
 +
 +    uint64_t F[8][256] = {}, *a = _p, *b = malloc(8 * l);
 +    if (b == NULL) return 1;
 +
-+    for (uint64_t *p = a, *const P = p + l; p < P; p++) {
-+        *p += (1UL << 63);
++    for (uint64_t *p = a + 64, *p2 = b + 64, *const P = p + (l - 64); p < P; p2++) {
++        *p2 = *p ^ (1UL << 63);
 +        for (int i = 0; i < 8; i++)
-+            F[i][(*p >> i * 8) & 255]++;
++            F[i][(*p2 >> i * 8) & 255]++;
++        if (!FIXNUM_P(*p++)) {
++            free(b);
++            return 1;
++        }
 +    }
 +
++    for (uint64_t *p = a, *p2 = b, *const P = p + 64; p < P; p2++) {
++        *p2 = *p++ ^ (1UL << 63);
++        for (int i = 0; i < 8; i++)
++            F[i][(*p2 >> i * 8) & 255]++;
++    }
++
++    { uint64_t *t = a; a = b, b = t; }
++
++    uint64_t skip[8] = {}; int last = 10;
++
 +    for (int i = 0; i < 8; i++) {
-+        uint64_t x = 0, t, *o = F[i], flag = 0;
++        uint64_t x = 0, t, *o = F[i];
 +        for (int j = 0; j < 256; j++) {
 +            if ((t = o[j]) == (uint64_t)l) {
-+                flag = 1;
++                skip[i] = 1;
 +                break;
 +            }
 +            x = (o[j] = x) + t;
 +        }
-+        if (flag) continue;
-+        for (uint64_t *p = a, *const P = p + l; p < P; p++) {
-+            b[o[(*p >> i * 8) & 255]++] = *p;
++    }
++
++    for (int i = 7; i >= 0; --i)
++        if (skip[i] == 0) {
++            last = i;
++            break;
 +        }
++
++    if (last == 10) {
++        free(a);
++        return 0;
++    }
++
++    for (int i = 0; i < 8; i++) {
++        if (skip[i]) continue;
++        uint64_t *o = F[i];
++        if (i < last)
++            for (uint64_t *p = a, *const P = p + l; p < P; p++) {
++                b[o[(*p >> i * 8) & 255]++] = *p;
++            }
++        else
++            for (uint64_t *p = a, *const P = p + l; p < P; p++) {
++                b[o[(*p >> i * 8) & 255]++] = *p ^ (1UL << 63);
++            }
 +        o = a, a = b, b = o;
 +    }
 +
 +    if (a != _p) {
-+        memcpy(_p, b, 8 * l);
++        memcpy(_p, a, 8 * l);
 +        b = a;
 +    }
-+
-+    for (uint64_t *p = _p, *const P = p + l; p < P; p++)
-+        *p -= (1UL << 63);
 +
 +    free(b);
 +    return 0;
@@ -95,7 +125,7 @@ index a33c43bdbf..578d9443cd 100644
  /*
   *  call-seq:
   *    array.sort! -> self
-@@ -3577,8 +3623,20 @@ rb_ary_sort_bang(VALUE ary)
+@@ -3577,8 +3654,20 @@ rb_ary_sort_bang(VALUE ary)
          data.cmp_opt.opt_methods = 0;
          data.cmp_opt.opt_inited = 0;
          RARRAY_PTR_USE(tmp, ptr, {
